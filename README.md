@@ -1,5 +1,9 @@
 # Stateful MongoDB on Kubernetes using Helm (LKE)
 
+![Demo GIF placeholder](docs/demo.gif)
+
+Tip: Replace `docs/demo.gif` with a short screencast of setup → TLS → UI access. See "Optional Screencast / Animations" below.
+
 Enterprise-style reference to deploy a stateful service (MongoDB replica set) on Kubernetes with:
 - Helm (Bitnami MongoDB), Mongo Express UI
 - NGINX Ingress + cert-manager (Let’s Encrypt TLS)

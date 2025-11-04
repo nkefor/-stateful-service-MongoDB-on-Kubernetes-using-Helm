@@ -1,0 +1,5 @@
+# Add CVE IDs to ignore for image scanning in CI.
+# Use sparingly and with justification in commit messages.
+# Example:
+# CVE-2023-12345
+# CVE-2024-00001
