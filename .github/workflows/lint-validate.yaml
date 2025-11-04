@@ -1,0 +1,126 @@
+name: Lint and Validate
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'k8s/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - '.yamllint.yaml'
+  pull_request:
+    paths:
+      - 'k8s/**'
+      - 'scripts/**'
+      - '.github/workflows/**'
+      - '.yamllint.yaml'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yamllint, shellcheck, shfmt, PowerShell
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y yamllint shellcheck curl wget gnupg software-properties-common
+          # shfmt
+          SHFMT_VER=$(curl -s https://api.github.com/repos/mvdan/sh/releases/latest | grep browser_download_url | grep linux_amd64 | cut -d '"' -f4)
+          curl -fsSL "$SHFMT_VER" -o /usr/local/bin/shfmt
+          sudo chmod +x /usr/local/bin/shfmt
+          # PowerShell (pwsh)
+          sudo snap install powershell --classic
+
+      - name: Run yamllint on k8s and workflows
+        run: |
+          yamllint --strict -c .yamllint.yaml k8s .github/workflows
+
+      - name: Run shellcheck on scripts
+        run: |
+          shellcheck -S warning scripts/*.sh
+
+      - name: Check shell formatting with shfmt
+        run: |
+          shfmt -d scripts/*.sh
+
+      - name: Run PSScriptAnalyzer on PowerShell scripts
+        run: |
+          pwsh -NoLogo -NoProfile -Command "Install-Module PSScriptAnalyzer -Scope CurrentUser -Force; Import-Module PSScriptAnalyzer; Invoke-ScriptAnalyzer -Path 'scripts' -Recurse -EnableExit"
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Export pinned versions
+        run: |
+          if [ -f versions.env ]; then
+            export $(grep -v '^#' versions.env | xargs -d '\n')
+            echo "HELM_INGRESS_NGINX_CHART_VERSION=$HELM_INGRESS_NGINX_CHART_VERSION" >> $GITHUB_ENV
+            echo "HELM_MONGODB_CHART_VERSION=$HELM_MONGODB_CHART_VERSION" >> $GITHUB_ENV
+            echo "HELM_CERT_MANAGER_CHART_VERSION=$HELM_CERT_MANAGER_CHART_VERSION" >> $GITHUB_ENV
+          fi
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Install Helm
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+
+      - name: Verify Helm chart versions exist
+        run: |
+          helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm repo add jetstack https://charts.jetstack.io
+          helm repo update
+          if [ -n "${HELM_INGRESS_NGINX_CHART_VERSION:-}" ]; then
+            helm show chart ingress-nginx/ingress-nginx --version "$HELM_INGRESS_NGINX_CHART_VERSION" >/dev/null
+          fi
+          if [ -n "${HELM_MONGODB_CHART_VERSION:-}" ]; then
+            helm show chart bitnami/mongodb --version "$HELM_MONGODB_CHART_VERSION" >/dev/null
+          fi
+          if [ -n "${HELM_CERT_MANAGER_CHART_VERSION:-}" ]; then
+            helm show chart jetstack/cert-manager --version "$HELM_CERT_MANAGER_CHART_VERSION" >/dev/null
+          fi
+
+      - name: Client-side validate Kubernetes manifests (kubectl)
+        run: |
+          set -euo pipefail
+          for f in k8s/*.yaml; do
+            echo "Validating $f"
+            kubectl apply --dry-run=client --validate=true -f "$f"
+          done
+          for f in k8s/backup/*.yaml; do
+            echo "Validating $f"
+            kubectl apply --dry-run=client --validate=true -f "$f"
+          done
+
+      - name: Install kubeconform
+        run: |
+          curl -L -o kubeconform.tar.gz https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar -xzf kubeconform.tar.gz kubeconform
+          sudo install -m 0755 kubeconform /usr/local/bin/kubeconform
+
+      - name: Validate Kubernetes manifests (kubeconform strict)
+        run: |
+          set -euo pipefail
+          kubeconform -strict -summary -output tap k8s/*.yaml k8s/backup/*.yaml
+
+      - name: Assert required manifests exist
+        run: |
+          test -f k8s/mongo-express-hpa.yaml
+          test -f k8s/networkpolicy-data-deny-all.yaml
+          test -f k8s/networkpolicy-allow-tools-to-mongo.yaml
+
+      - name: Enforce pinned Docker images (no latest tags)
+        run: |
+          if grep -R "image: .*:latest" k8s/; then
+            echo "Found :latest tag in Kubernetes manifests. Pin image versions." >&2
+            exit 1
+          fi

@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../mongo-express.yaml
+  - ../mongo-express-ingress.yaml
+  - ../mongo-express-hpa.yaml
+  - ../networkpolicy-data-deny-all.yaml
+  - ../networkpolicy-allow-tools-to-mongo.yaml
+  - ../backup/mongo-backup-cronjob.yaml
+
+commonLabels:
+  app.kubernetes.io/part-of: mongo-demo
+

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base"
+  ],
+  "labels": ["dependencies"],
+  "timezone": "UTC",
+  "regexManagers": [
+    {
+      "fileMatch": ["^versions\\.env$"],
+      "matchStrings": [
+        "HELM_INGRESS_NGINX_CHART_VERSION=(?<currentValue>.+)\\n",
+        "HELM_MONGODB_CHART_VERSION=(?<currentValue>.+)\\n",
+        "HELM_CERT_MANAGER_CHART_VERSION=(?<currentValue>.+)\\n"
+      ],
+      "datasourceTemplate": "helm",
+      "depNameTemplate": "{{#if (matchString 'INGRESS')}}ingress-nginx/ingress-nginx{{/if}}{{#if (matchString 'MONGODB')}}bitnami/mongodb{{/if}}{{#if (matchString 'CERT_MANAGER')}}jetstack/cert-manager{{/if}}",
+      "registryUrlTemplate": "{{#if (matchString 'INGRESS')}}https://kubernetes.github.io/ingress-nginx{{/if}}{{#if (matchString 'MONGODB')}}https://charts.bitnami.com/bitnami{{/if}}{{#if (matchString 'CERT_MANAGER')}}https://charts.jetstack.io{{/if}}"
+    }
+  ],
+  "packageRules": [
+    {
+      "matchDatasources": ["docker"],
+      "matchFileNames": ["k8s/**.yaml"],
+      "automerge": false,
+      "rangeStrategy": "bump"
+    },
+    {
+      "matchManagers": ["regex"],
+      "automerge": false,
+      "rangeStrategy": "bump"
+    }
+  ]
+}
+

@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backups
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: s3-credentials
+  namespace: backups
+type: Opaque
+stringData:
+  AWS_ACCESS_KEY_ID: "CHANGE-ME"
+  AWS_SECRET_ACCESS_KEY: "CHANGE-ME"
+  AWS_DEFAULT_REGION: "us-east-1"
+  S3_ENDPOINT: "https://us-east-1.linodeobjects.com"
+  S3_BUCKET: "s3://your-bucket-name/mongo-dumps"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongo-dump-to-s3
+  namespace: backups
+spec:
+  schedule: "0 2 * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: dump
+              image: bitnami/mongodb:6.0.14-debian-12-r0
+              env:
+                - name: ROOTPW
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongo-root
+                      key: password
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: s3-credentials
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: s3-credentials
+                      key: AWS_SECRET_ACCESS_KEY
+                - name: AWS_DEFAULT_REGION
+                  valueFrom:
+                    secretKeyRef:
+                      name: s3-credentials
+                      key: AWS_DEFAULT_REGION
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: s3-credentials
+                      key: S3_ENDPOINT
+                - name: S3_BUCKET
+                  valueFrom:
+                    secretKeyRef:
+                      name: s3-credentials
+                      key: S3_BUCKET
+              command:
+                - /bin/bash
+                - -euo
+                - pipefail
+                - -c
+                - |
+                  export TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  DUMP_DIR=/tmp/dump-$TIMESTAMP
+                  mkdir -p "$DUMP_DIR"
+                  mongodump \
+                    --uri="mongodb://root:${ROOTPW}@mongo-mongodb-0.mongo-mongodb-headless.data.svc.cluster.local:27017/?replicaSet=rs0&authSource=admin" \
+                    --gzip \
+                    --archive="$DUMP_DIR/mongo-$TIMESTAMP.archive.gz"
+                  curl -sL https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip -o /tmp/awscliv2.zip
+                  apt-get update && apt-get install -y unzip ca-certificates && unzip -q /tmp/awscliv2.zip -d /tmp && /tmp/aws/install
+                  aws configure set default.s3.signature_version s3v4
+                  aws s3 cp "$DUMP_DIR/mongo-$TIMESTAMP.archive.gz" "$S3_BUCKET/" \
+                    --endpoint-url "$S3_ENDPOINT" \
+                    --only-show-errors
+                  echo "Backup uploaded to $S3_BUCKET/mongo-$TIMESTAMP.archive.gz"
+                  rm -rf "$DUMP_DIR"
+

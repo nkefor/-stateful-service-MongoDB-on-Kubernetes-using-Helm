@@ -1,0 +1,85 @@
+name: Deploy to LKE
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'k8s/**'
+      - 'scripts/**'
+  workflow_dispatch:
+    inputs:
+      host:
+        description: 'Ingress host (e.g., mongo-ui.example.com)'
+        required: true
+      email:
+        description: 'Email for Let\'s Encrypt'
+        required: true
+      env:
+        description: 'Environment overlay (dev or prod)'
+        required: false
+        default: 'prod'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ github.event.inputs.host || secrets.INGRESS_HOST }}
+      EMAIL: ${{ github.event.inputs.email || secrets.CERT_EMAIL }}
+      ENV: ${{ github.event.inputs.env || 'prod' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kubectl
+        run: |
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+
+      - name: Export pinned versions
+        run: |
+          if [ -f versions.env ]; then
+            export $(grep -v '^#' versions.env | xargs -d '\n')
+            echo "HELM_INGRESS_NGINX_CHART_VERSION=$HELM_INGRESS_NGINX_CHART_VERSION" >> $GITHUB_ENV
+            echo "HELM_MONGODB_CHART_VERSION=$HELM_MONGODB_CHART_VERSION" >> $GITHUB_ENV
+            echo "HELM_CERT_MANAGER_CHART_VERSION=$HELM_CERT_MANAGER_CHART_VERSION" >> $GITHUB_ENV
+          fi
+
+      - name: Set up kubectl from kubeconfig secret
+        if: secrets.KUBE_CONFIG_B64 != ''
+        run: |
+          mkdir -p ~/.kube
+          echo "$KUBE_CONFIG_B64" | base64 -d > ~/.kube/config
+        env:
+          KUBE_CONFIG_B64: ${{ secrets.KUBE_CONFIG_B64 }}
+
+      - name: Install Helm
+        run: |
+          sudo snap install helm --classic || {
+            curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          }
+
+      - name: Validate inputs
+        run: |
+          test -n "$HOST" || { echo 'HOST not set'; exit 1; }
+          test -n "$EMAIL" || { echo 'EMAIL not set'; exit 1; }
+
+      - name: Deploy base stack (ingress, MongoDB, Mongo Express)
+        run: |
+          bash scripts/setup.sh "$HOST"
+
+      - name: Enable TLS with cert-manager
+        run: |
+          bash scripts/tls-setup.sh "$HOST" "$EMAIL"
+
+      - name: Apply Kustomize overlay (env)
+        run: |
+          OVERLAY="k8s/overlays/${ENV}"
+          if [ ! -f "$OVERLAY/ingress-host.yaml" ]; then
+            echo "Unknown overlay: $OVERLAY" >&2; exit 1; fi
+          sed -i -E "s/host: .*/host: ${HOST}/" "$OVERLAY/ingress-host.yaml"
+          sed -i -E "s/(\s*-\s).*example.com/\1${HOST}/" "$OVERLAY/ingress-host.yaml"
+          kubectl kustomize "$OVERLAY" | kubectl apply -f -
+
+      - name: Health check over Ingress
+        run: |
+          bash scripts/health-check.sh "$HOST"
