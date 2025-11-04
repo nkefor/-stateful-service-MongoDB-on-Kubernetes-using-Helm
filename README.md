@@ -1,8 +1,20 @@
 # Stateful MongoDB on Kubernetes using Helm (LKE)
 
+Stateful service blueprint: secure, observable, and automated MongoDB on Kubernetes.
+
 ![Demo GIF placeholder](docs/demo.gif)
 
 Tip: Replace `docs/demo.gif` with a short screencast of setup → TLS → UI access. See "Optional Screencast / Animations" below.
+
+## Screenshots (Placeholders)
+- UI (Mongo Express): `docs/screenshots/ui.png`
+- GitHub Actions successful deploy: `docs/screenshots/actions.png`
+- MongoDB replica set ready: `docs/screenshots/replicaset.png`
+
+Example embedding once you add images:
+
+![Mongo Express UI](docs/screenshots/ui.png)
+
 
 Enterprise-style reference to deploy a stateful service (MongoDB replica set) on Kubernetes with:
 - Helm (Bitnami MongoDB), Mongo Express UI
