@@ -92,12 +92,22 @@ flowchart TD
 
 Validation workflow lints YAML and scripts, checks schema with kubeconform, enforces pinned image tags, and verifies chart versions from `versions.env`.
 
+Security add-on: the CI also scans container images referenced in the manifests using Trivy and fails the build on HIGH/CRITICAL CVEs.
+
 ## Troubleshooting
 - Ingress pending/no IP: ensure your cloud provides an external LoadBalancer and security rules allow 80/443.
 - TLS fails: verify DNS resolves to the ingress IP and that HTTP‑01 path is reachable.
 - PVC pending: confirm StorageClass (`linode-block-storage-retain`) exists and has capacity.
 - HPA no scale: ensure `metrics-server` is running in `kube-system`.
 - Backups: verify S3 endpoint/bucket and credentials; check CronJob logs.
+
+## Optional Screencast / Animations
+- Record a short terminal demo (deploy + browse) with asciinema:
+  - `pip install asciinema` or `brew install asciinema`
+  - `asciinema rec` → run setup/tls scripts and exit to save the cast
+- Convert to GIF for README using agg:
+  - `npm i -g asciicast2gif` and `asciicast2gif <cast.json> out.gif` (requires Docker or ImageMagick)
+- Add screenshots of the Mongo Express UI and link the GIF at the top of the README if desired.
 
 ## Set GitHub Description and Topics
 - With GitHub CLI (`gh`):

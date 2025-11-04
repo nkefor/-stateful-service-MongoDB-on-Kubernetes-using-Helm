@@ -89,6 +89,29 @@ jobs:
             helm show chart jetstack/cert-manager --version "$HELM_CERT_MANAGER_CHART_VERSION" >/dev/null
           fi
 
+      - name: Install Trivy (image scanner)
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y && sudo apt-get install -y trivy
+
+      - name: Scan container images referenced in k8s manifests
+        run: |
+          set -euo pipefail
+          IMAGES=$(grep -RhoE "image:\s*[^#]+" k8s | awk -F'image:' '{print $2}' | tr -d '"' | tr -d "'" | xargs -n1 | sort -u)
+          if [ -z "$IMAGES" ]; then
+            echo "No images found to scan."; exit 0; fi
+          echo "Images to scan:"; echo "$IMAGES"
+          FAIL=0
+          while read -r img; do
+            [ -z "$img" ] && continue
+            echo "--- Scanning $img ---"
+            trivy image --quiet --severity HIGH,CRITICAL --exit-code 1 "$img" || FAIL=1
+          done <<< "$IMAGES"
+          exit $FAIL
+
       - name: Client-side validate Kubernetes manifests (kubectl)
         run: |
           set -euo pipefail
