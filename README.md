@@ -1,62 +1,109 @@
-# AWS Infra + CI/CD Sample
+# Stateful MongoDB on Kubernetes using Helm (LKE)
 
-Enterprise-style reference implementation that deploys a sample containerized web app to AWS using:
+Enterprise-style reference to deploy a stateful service (MongoDB replica set) on Kubernetes with:
+- Helm (Bitnami MongoDB), Mongo Express UI
+- NGINX Ingress + cert-manager (Let’s Encrypt TLS)
+- Linode LKE and Block Storage
+- NetworkPolicies, HPA, backups to S3-compatible storage
+- CI/CD via GitHub Actions; Kustomize overlays (dev/prod)
 
-- Terraform (VPC, ECS on Fargate, ALB, ECR, CloudWatch)
-- GitHub Actions (OIDC to AWS, build and push image, Terraform deploy)
-- Optional EC2 bastion host (disabled by default)
+## Architecture
+
+```mermaid
+flowchart LR
+  User -->|HTTPS| Ingress[NGINX Ingress]
+  Ingress --> SVC[Service tools/mongo-express]
+  SVC --> UI[Mongo Express Pod]
+  UI -->|27017| RS[(MongoDB ReplicaSet)]
+  subgraph data Namespace
+    RS -.-> PVC1[(PV/PVC)]
+    RS -.-> PVC2[(PV/PVC)]
+    RS -.-> PVC3[(PV/PVC)]
+  end
+  note right of Ingress: cert-manager issues TLS via ACME HTTP-01
+  note bottom of RS: Linode Block Storage provides persistence
+```
+
+NetworkPolicies default‑deny in `data` and allow only `tools` -> MongoDB:27017. HPA scales Mongo Express by CPU. A nightly CronJob uploads mongodump archives to Linode Object Storage.
 
 ## What’s Included
+- `k8s/`
+  - `mongodb-values.yaml` (replicaset, persistence, PDB, anti‑affinity, spread)
+  - `mongo-express.yaml` (Deployment/Service with probes)
+  - `mongo-express-ingress.yaml` (TLS, HTTPS redirect, HSTS)
+  - `mongo-express-hpa.yaml` (CPU autoscaling 1–5)
+  - `networkpolicy-*.yaml` (default deny + allow tools→Mongo)
+  - `backup/mongo-backup-cronjob.yaml` (mongodump → object storage)
+  - `base/` and `overlays/{dev,prod}/` (Kustomize)
+- `scripts/`
+  - `setup.(sh|ps1)` ingress, MongoDB Helm install, Mongo Express, metrics‑server, HPA
+  - `tls-setup.(sh|ps1)` cert‑manager + ClusterIssuer, TLS patch
+  - `health-check.sh` curl ingress with Host header
+  - `deploy-kustomize.sh` apply dev/prod overlays
+  - `patch-config.(sh|ps1)` patch hosts, ACME email, Mongo creds, backup settings
+  - `teardown.(sh|ps1)` cleanup
+- `.github/workflows/`
+  - `deploy.yaml` deploy + TLS + overlay + health check
+  - `lint-validate.yaml` yamllint, shellcheck, shfmt, PSScriptAnalyzer, kubeconform
+- `versions.env` pinned Helm chart versions; `SECURITY.md` hardening
 
-- `infra/` Terraform for VPC, subnets, NAT, ALB, ECS Fargate service, ECR repo, IAM roles, CloudWatch Logs + alarms
-- `app/` Minimal Node.js Express app with Dockerfile
-- `.github/workflows/` CI (lint/build) + CD (build+push image, Terraform apply)
+## Real‑World Scenarios
+- Team staging data service with TLS and restricted access.
+- Training/demo clusters needing repeatable setup/teardown.
+- Baseline pattern for stateful workloads: ingress, TLS, persistence, policies, backups.
 
 ## Prerequisites
+- LKE cluster (or any K8s with a compatible StorageClass and external LoadBalancer)
+- `kubectl` and `helm`; kubeconfig set to target cluster
+- Domain for ingress host; DNS A‑record to ingress controller external IP
+- Optional: GitHub Actions and `gh` CLI for metadata
 
-- AWS account with permissions to create IAM roles, VPC, ECS, ECR, ALB, CloudWatch, S3, DynamoDB
-- GitHub repository (this repo) with Actions enabled
+## End‑to‑End Steps
+1) Configure values (safe patch)
+   - `bash scripts/patch-config.sh --prod-host prod.example.com --dev-host dev.example.com --email you@example.com --mongo-root 'StrongRoot#Pass123' --mongo-app-user appuser --mongo-app-pass 'StrongApp#Pass456' --s3-endpoint https://us-east-1.linodeobjects.com --s3-bucket s3://my-bucket/mongo-dumps`
+2) Install base components
+   - `bash scripts/setup.sh prod.example.com`
+   - Installs ingress-nginx, MongoDB (Helm), Mongo Express, metrics‑server, HPA
+3) Enable TLS
+   - `bash scripts/tls-setup.sh prod.example.com you@example.com`
+   - Installs cert‑manager, applies ClusterIssuer, patches ingress for TLS
+4) Verify
+   - `bash scripts/health-check.sh prod.example.com`
+   - Browse: `https://prod.example.com` (basic auth from `mongo-express-auth` secret)
+5) Multi‑env via Kustomize
+   - `bash scripts/deploy-kustomize.sh k8s/overlays/prod`
+   - For dev: `bash scripts/deploy-kustomize.sh k8s/overlays/dev`
+6) Backups
+   - Edit credentials in `k8s/backup/mongo-backup-cronjob.yaml` Secret (or create via kubectl)
+   - `kubectl apply -f k8s/backup/mongo-backup-cronjob.yaml`
+7) Cleanup
+   - `bash scripts/teardown.sh` (or PowerShell equivalents)
 
-## One-Time Setup
+## CI/CD Overview
 
-1) Create GitHub OIDC role in AWS (manual, once):
-   - Option A (recommended): Use `infra/iam-github-oidc` with your admin creds locally to create the role.
-   - Option B: Create via AWS Console following AWS docs for GitHub OIDC. Trust policy must allow your `org/repo:ref:refs/heads/main` (adjust as needed) and grant permissions for ECR, ECS, EC2, ALB, CloudWatch, S3 (state), DynamoDB (lock), IAM pass roles for ECS.
+```mermaid
+flowchart TD
+  Push[Push/Dispatch] --> Deploy
+  Deploy --> Helm[Setup: ingress, MongoDB, Express]
+  Helm --> TLS[tls-setup: cert-manager + ClusterIssuer]
+  TLS --> Kustomize[Apply overlay (dev/prod)]
+  Kustomize --> Health[Ingress health check]
+```
 
-   Save the created role ARN for the next step.
+Validation workflow lints YAML and scripts, checks schema with kubeconform, enforces pinned image tags, and verifies chart versions from `versions.env`.
 
-2) Add GitHub Secrets in your repo:
-   - `AWS_ROLE_ARN` — The role ARN created above.
-   - `AWS_REGION` — e.g. `us-east-1`.
-   - `TF_STATE_BUCKET` — S3 bucket name to hold Terraform state (the workflow will create if missing).
-   - `TF_LOCK_TABLE` — DynamoDB table name to hold state locks (e.g. `terraform-locks`; workflow will create if missing).
+## Troubleshooting
+- Ingress pending/no IP: ensure your cloud provides an external LoadBalancer and security rules allow 80/443.
+- TLS fails: verify DNS resolves to the ingress IP and that HTTP‑01 path is reachable.
+- PVC pending: confirm StorageClass (`linode-block-storage-retain`) exists and has capacity.
+- HPA no scale: ensure `metrics-server` is running in `kube-system`.
+- Backups: verify S3 endpoint/bucket and credentials; check CronJob logs.
 
-3) (Optional) Adjust defaults in `infra/variables.tf` (project name, environment, desired count, etc.).
+## Set GitHub Description and Topics
+- With GitHub CLI (`gh`):
+  - `gh repo edit --description "Stateful MongoDB on Kubernetes using Helm, with TLS, NetworkPolicies, HPA, backups, Kustomize, and CI/CD" --add-topic kubernetes --add-topic helm --add-topic mongodb --add-topic devops --add-topic cicd --add-topic linode --add-topic ingress --add-topic cert-manager`
+- Or use helper scripts in `scripts/` (requires `gh`):
+  - `bash scripts/gh-set-repo-meta.sh "Stateful MongoDB on Kubernetes using Helm..." kubernetes,helm,mongodb,devops,cicd,linode,ingress,cert-manager`
 
-## How Deploy Works (CD pipeline)
-
-On push to `main` (paths `app/**` or `infra/**`):
-- Configure AWS via OIDC and ensure S3 (state) + DynamoDB (lock) exist
-- Terraform init (S3 backend), then apply only ECR repo to ensure it exists
-- Build and push Docker image to ECR (tagged with commit SHA + `latest`)
-- Terraform apply full stack with `image_tag` set to the commit SHA
-
-Outputs include the ALB DNS name to access the app.
-
-## Local Development
-
-- App run: `cd app && npm install && npm start` (listens on `3000`).
-- Build image: `docker build -t sample-app:dev ./app`.
-
-## Terraform State
-
-- Backend is S3. The workflow creates the S3 bucket + DynamoDB table if missing, then runs `terraform init` with `-backend-config`.
-
-## Optional EC2 Bastion
-
-- Enable by setting `enable_bastion = true` (e.g. via `TF_VAR_enable_bastion=true` in the workflow or local CLI). Creates a small SSM-managed instance in a public subnet.
-
-## Clean Up
-
-- Destroy: In GitHub, temporarily disable CD workflow, then run Terraform destroy locally with suitable AWS creds: `cd infra && terraform init && terraform destroy -var image_tag=latest`.
-
+## Security
+See `SECURITY.md` for hardening: secrets handling, RBAC, NetworkPolicies, TLS, probes/limits/HPA, pinned images, image scanning, backups/DR, and platform hygiene.
