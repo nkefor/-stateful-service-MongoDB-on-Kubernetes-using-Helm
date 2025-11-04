@@ -6,6 +6,18 @@ Stateful service blueprint: secure, observable, and automated MongoDB on Kuberne
 
 Tip: Replace `docs/demo.gif` with a short screencast of setup → TLS → UI access. See "Optional Screencast / Animations" below.
 
+## Table of Contents
+- Overview and Architecture
+- What’s Included
+- Real‑World Scenarios
+- Prerequisites
+- End‑to‑End Steps
+- CI/CD Overview
+- Troubleshooting
+- Screenshots
+- Usage Guide (full): docs/USAGE.md
+- Security Guide: SECURITY.md
+
 ## Screenshots (Placeholders)
 - UI (Mongo Express): `docs/screenshots/ui.png`
 - GitHub Actions successful deploy: `docs/screenshots/actions.png`
