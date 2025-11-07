@@ -1,0 +1,89 @@
+{
+  "personal_info": {
+    "name": "${PERSONAL_NAME}",
+    "email": "${PERSONAL_EMAIL}",
+    "phone": "${PERSONAL_PHONE}",
+    "linkedin_email": "${LINKEDIN_EMAIL}",
+    "linkedin_password": "${LINKEDIN_PASSWORD}",
+    "resume_path": "${RESUME_PATH}",
+    "cover_letter_path": "${COVER_LETTER_PATH}"
+  },
+
+  "job_preferences": {
+    "job_titles": [
+      "DevOps Engineer",
+      "Cloud Engineer",
+      "Site Reliability Engineer",
+      "Infrastructure Engineer",
+      "Platform Engineer"
+    ],
+    "locations": [
+      "Remote",
+      "Hybrid",
+      "Onsite",
+      "Atlanta, GA",
+      "United States"
+    ],
+    "keywords": [
+      "AWS",
+      "Kubernetes",
+      "Terraform",
+      "Docker",
+      "CI/CD",
+      "Python",
+      "DevSecOps"
+    ],
+    "experience_level": [
+      "Entry level",
+      "Mid-Senior level"
+    ],
+    "remote_preference": "remote_only",
+    "salary_min": ${SALARY_MIN}
+  },
+
+  "platforms": {
+    "linkedin": true,
+    "indeed": true,
+    "dice": true,
+    "ziprecruiter": true,
+    "monster": true,
+    "glassdoor": true,
+    "careerbuilder": true,
+    "builtin": true,
+    "jobright_ai": true,
+    "remote_co": true,
+    "flexjobs": true,
+    "wellfound": true,
+    "weworkremotely": true,
+    "remotive": true,
+    "letsworkremotely": true,
+    "toptal": true,
+    "hired": true,
+    "angellist": true,
+    "theladders": true,
+    "zapier": true,
+    "flexa": true,
+    "nodesk": true,
+    "dynamitejobs": true
+  },
+
+  "automation_settings": {
+    "max_applications_per_run": ${MAX_APPLICATIONS_PER_RUN},
+    "delay_between_applications": ${DELAY_BETWEEN_APPLICATIONS},
+    "headless_browser": ${HEADLESS_BROWSER},
+    "save_screenshots": ${SAVE_SCREENSHOTS},
+    "send_email_notifications": ${SEND_EMAIL_NOTIFICATIONS}
+  },
+
+  "filters": {
+    "exclude_companies": [
+      "Company You Want To Avoid"
+    ],
+    "exclude_keywords": [
+      "unpaid",
+      "volunteer",
+      "commission only"
+    ],
+    "required_keywords": []
+  }
+}

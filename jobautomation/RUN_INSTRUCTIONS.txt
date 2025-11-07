@@ -1,0 +1,254 @@
+═══════════════════════════════════════════════════════════════════════
+         HOW TO RUN JOB AUTOMATION - STEP BY STEP GUIDE
+═══════════════════════════════════════════════════════════════════════
+
+⚠ IMPORTANT: Run these commands in Windows Command Prompt or PowerShell
+(NOT in Git Bash - there's a Python path issue there)
+
+═══════════════════════════════════════════════════════════════════════
+                        OPTION 1: EASIEST WAY
+═══════════════════════════════════════════════════════════════════════
+
+Just double-click these files in Windows Explorer:
+
+1. Double-click: RUN_ME_FIRST.bat
+   (This handles everything automatically)
+
+OR if that doesn't work:
+
+1. Double-click: INSTALL_NOW.bat  (installs packages)
+2. Edit: config\config.json       (add your info)
+3. Add resume to: resumes\ folder
+4. Double-click: RUN.bat          (runs automation)
+
+
+═══════════════════════════════════════════════════════════════════════
+              OPTION 2: COMMAND PROMPT (STEP BY STEP)
+═══════════════════════════════════════════════════════════════════════
+
+Open Command Prompt:
+1. Press Windows Key
+2. Type: cmd
+3. Press Enter
+
+Then type these commands:
+
+───────────────────────────────────────────────────────────────────────
+Step 1: Navigate to project folder
+───────────────────────────────────────────────────────────────────────
+cd C:\Users\keff2\email-automation\jobautomation
+
+
+───────────────────────────────────────────────────────────────────────
+Step 2: Install Python packages
+───────────────────────────────────────────────────────────────────────
+py -m pip install selenium==4.16.0
+py -m pip install webdriver-manager==4.0.1
+py -m pip install google-api-python-client==2.111.0
+py -m pip install google-auth==2.25.2
+py -m pip install google-auth-oauthlib==1.2.0
+py -m pip install beautifulsoup4==4.12.2
+
+(Each installation takes 10-30 seconds)
+
+
+───────────────────────────────────────────────────────────────────────
+Step 3: Edit configuration file
+───────────────────────────────────────────────────────────────────────
+notepad config\config.json
+
+Update these lines:
+  Line 3:  "name": "YOUR ACTUAL NAME"
+  Line 4:  "email": "your.actual.email@gmail.com"
+  Line 5:  "phone": "+1-555-YOUR-NUMBER"
+  Line 7:  "linkedin_password": "YOUR_ACTUAL_PASSWORD"
+  Line 8:  "resume_path": "resumes/Your_Actual_Resume.pdf"
+
+Save and close Notepad
+
+
+───────────────────────────────────────────────────────────────────────
+Step 4: Add your resume
+───────────────────────────────────────────────────────────────────────
+explorer resumes
+
+Copy your resume PDF file into this folder
+Example: John_Doe_Resume.pdf
+
+
+───────────────────────────────────────────────────────────────────────
+Step 5: Run the automation!
+───────────────────────────────────────────────────────────────────────
+py job_autoapply.py
+
+Chrome browser will open and start applying to jobs automatically!
+
+
+═══════════════════════════════════════════════════════════════════════
+                  OPTION 3: POWERSHELL (ALTERNATIVE)
+═══════════════════════════════════════════════════════════════════════
+
+Open PowerShell:
+1. Press Windows Key
+2. Type: powershell
+3. Press Enter
+
+Then run:
+
+cd C:\Users\keff2\email-automation\jobautomation
+py -m pip install -r requirements.txt
+py job_autoapply.py
+
+
+═══════════════════════════════════════════════════════════════════════
+                        WHAT TO EXPECT
+═══════════════════════════════════════════════════════════════════════
+
+When you run the script:
+
+1. ⏱ Chrome browser opens (you'll see it)
+2. 🔐 Logs into LinkedIn
+3. 🔍 Searches for jobs (DevOps, Cloud Engineer, etc.)
+4. 📝 Applies to jobs automatically
+5. 📧 Sends email summary (if Gmail configured)
+6. 📊 Saves logs to logs\ folder
+
+Duration: 15-30 minutes for 25 applications
+
+
+═══════════════════════════════════════════════════════════════════════
+                    BEFORE FIRST RUN - CHECKLIST
+═══════════════════════════════════════════════════════════════════════
+
+Verify these items:
+
+[ ] Python installed (you have Python 3.13.5 ✓)
+[ ] Packages installed (run INSTALL_NOW.bat or commands above)
+[ ] config\config.json edited with YOUR information
+[ ] Resume PDF added to resumes\ folder
+[ ] Google Chrome installed
+[ ] LinkedIn account ready (correct password)
+
+
+═══════════════════════════════════════════════════════════════════════
+                         QUICK TEST RUN
+═══════════════════════════════════════════════════════════════════════
+
+For your first run, test with just 5 jobs:
+
+1. Open: config\config.json
+2. Find line 50: "max_applications_per_run": 25
+3. Change to: "max_applications_per_run": 5
+4. Save file
+5. Run: py job_autoapply.py
+
+This applies to only 5 jobs so you can test it works!
+
+
+═══════════════════════════════════════════════════════════════════════
+                     IF SOMETHING GOES WRONG
+═══════════════════════════════════════════════════════════════════════
+
+Problem: "py is not recognized"
+Fix: Try using "python" instead of "py"
+  python -m pip install -r requirements.txt
+  python job_autoapply.py
+
+Problem: "ModuleNotFoundError: No module named 'selenium'"
+Fix: Install packages again
+  py -m pip install -r requirements.txt
+
+Problem: "Could not find Chrome"
+Fix: Install Google Chrome
+  Download from: https://www.google.com/chrome
+
+Problem: "LinkedIn login failed"
+Fix: Check your password in config\config.json (line 7)
+
+Problem: Browser doesn't open
+Fix: Make sure Chrome is installed and try again
+
+For more help, check: TROUBLESHOOTING.md
+
+
+═══════════════════════════════════════════════════════════════════════
+                        AFTER FIRST RUN
+═══════════════════════════════════════════════════════════════════════
+
+Check results:
+1. Open: logs\job_automation.log
+2. Open: logs\applications_*.json
+3. Check your LinkedIn for applications sent
+
+If successful:
+- Increase max_applications to 25 (in config.json)
+- Run daily for best results
+- Track applications in a spreadsheet
+
+
+═══════════════════════════════════════════════════════════════════════
+                    SCHEDULE DAILY RUNS (OPTIONAL)
+═══════════════════════════════════════════════════════════════════════
+
+To run automatically every day:
+
+1. Press Windows Key + R
+2. Type: taskschd.msc
+3. Press Enter (opens Task Scheduler)
+4. Click: "Create Basic Task"
+5. Name: "Job Auto Apply"
+6. Trigger: Daily at 9:00 AM
+7. Action: Start a program
+   Program: C:\Users\keff2\email-automation\jobautomation\RUN.bat
+8. Click Finish
+
+Now it runs automatically every morning!
+
+
+═══════════════════════════════════════════════════════════════════════
+                          FILE LOCATIONS
+═══════════════════════════════════════════════════════════════════════
+
+Project folder:
+  C:\Users\keff2\email-automation\jobautomation\
+
+Important files:
+  config\config.json          ← Your settings (EDIT THIS)
+  resumes\                    ← Put resume here
+  job_autoapply.py            ← Main script
+  RUN.bat                     ← Quick run
+  INSTALL_NOW.bat             ← Install packages
+  logs\                       ← Results appear here
+
+
+═══════════════════════════════════════════════════════════════════════
+                         READY TO START?
+═══════════════════════════════════════════════════════════════════════
+
+EASIEST WAY:
+  1. Open Windows Explorer
+  2. Navigate to: C:\Users\keff2\email-automation\jobautomation
+  3. Double-click: RUN_ME_FIRST.bat
+  4. Follow prompts
+
+MANUAL WAY:
+  1. Open Command Prompt (cmd)
+  2. cd C:\Users\keff2\email-automation\jobautomation
+  3. py -m pip install -r requirements.txt
+  4. Edit config\config.json
+  5. Add resume to resumes\
+  6. py job_autoapply.py
+
+
+═══════════════════════════════════════════════════════════════════════
+
+                   🎉 Good luck with your job search! 🎉
+
+═══════════════════════════════════════════════════════════════════════
+
+Questions? Check these files:
+  - HOW_TO_RUN.md
+  - TROUBLESHOOTING.md
+  - README.md
+
+═══════════════════════════════════════════════════════════════════════

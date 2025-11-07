@@ -1,0 +1,142 @@
+═══════════════════════════════════════════════════════════════
+          JOB AUTO-APPLY BOT - SETUP CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+Complete this checklist before running the bot:
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 1: PYTHON INSTALLATION                               │
+└───────────────────────────────────────────────────────────┘
+[ ] Python 3.11+ installed
+[ ] "Add Python to PATH" checked during install
+[ ] Verified with: python --version
+[ ] Shows: Python 3.11.x or newer
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 2: PACKAGES INSTALLED                                │
+└───────────────────────────────────────────────────────────┘
+[ ] Ran SETUP_WINDOWS.bat
+[ ] All packages installed successfully
+[ ] No error messages in console
+[ ] Tested with: pip list
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 3: CONFIG FILE EDITED                                │
+└───────────────────────────────────────────────────────────┘
+[ ] Opened: config/config.json
+[ ] Changed "name" to YOUR name
+[ ] Changed "email" to YOUR email
+[ ] Changed "phone" to YOUR phone number
+[ ] Changed "linkedin_password" to YOUR password
+[ ] Changed "resume_path" to match YOUR resume filename
+[ ] Updated "job_titles" with roles you want
+[ ] Updated "locations" with where you want to work
+[ ] Saved the file
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 4: RESUME ADDED                                      │
+└───────────────────────────────────────────────────────────┘
+[ ] Resume is in PDF format
+[ ] Copied resume to: resumes/ folder
+[ ] Filename matches config.json "resume_path"
+[ ] Tested path: file exists in resumes folder
+[ ] Resume is up-to-date and tailored
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 5: GMAIL API (OPTIONAL)                              │
+└───────────────────────────────────────────────────────────┘
+[ ] Created Google Cloud project
+[ ] Enabled Gmail API
+[ ] Created OAuth credentials (Desktop app)
+[ ] Downloaded credentials.json
+[ ] Moved to: config/credentials.json
+OR
+[ ] Skipped (will not receive email notifications)
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 6: CHROME INSTALLED                                  │
+└───────────────────────────────────────────────────────────┘
+[ ] Google Chrome installed
+[ ] Chrome updated to latest version
+[ ] Can open Chrome manually
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 7: TEST RUN                                          │
+└───────────────────────────────────────────────────────────┘
+[ ] Set max_applications_per_run to 3 (in config.json)
+[ ] Ran RUN.bat
+[ ] Browser opened successfully
+[ ] LinkedIn login worked
+[ ] At least 1 job found
+[ ] No errors in console
+[ ] Checked logs/job_automation.log
+
+┌───────────────────────────────────────────────────────────┐
+│ STEP 8: FULL RUN                                          │
+└───────────────────────────────────────────────────────────┘
+[ ] Increased max_applications_per_run to 25
+[ ] Ran RUN.bat again
+[ ] Applications submitted successfully
+[ ] Email notification received (if Gmail API set up)
+[ ] Reviewed logs/applications_*.json
+
+┌───────────────────────────────────────────────────────────┐
+│ OPTIONAL: SCHEDULE AUTOMATION                             │
+└───────────────────────────────────────────────────────────┘
+[ ] Opened Windows Task Scheduler
+[ ] Created daily task at preferred time
+[ ] Set action to run: RUN.bat
+[ ] Tested scheduled task
+
+
+═══════════════════════════════════════════════════════════════
+
+QUICK VERIFICATION COMMANDS:
+──────────────────────────────────────────────────────────────
+Check Python:
+  python --version
+
+Check packages:
+  pip list | findstr "selenium"
+  pip list | findstr "google-api"
+
+Check config:
+  python -m json.tool config\config.json
+
+Check resume exists:
+  dir resumes\*.pdf
+
+
+FIRST RUN CHECKLIST:
+──────────────────────────────────────────────────────────────
+Before clicking RUN.bat, verify:
+✓ LinkedIn account credentials are correct
+✓ Resume is in the right folder
+✓ Job preferences match what you want
+✓ You're ready to see browser automation in action
+✓ You'll monitor the first few applications
+
+
+AFTER FIRST RUN:
+──────────────────────────────────────────────────────────────
+[ ] Checked logs/job_automation.log for errors
+[ ] Verified applications in logs/applications_*.json
+[ ] Received email summary (if Gmail set up)
+[ ] Checked LinkedIn for application confirmations
+[ ] Adjusted config based on results
+
+
+TROUBLESHOOTING CHECKLIST:
+──────────────────────────────────────────────────────────────
+If something doesn't work:
+[ ] Read error message carefully
+[ ] Check logs/job_automation.log
+[ ] Review TROUBLESHOOTING.md
+[ ] Verify all steps in this checklist
+[ ] Try test run with max_applications = 1
+[ ] Run without headless mode to see browser
+
+
+═══════════════════════════════════════════════════════════════
+All checked? You're ready! Double-click RUN.bat
+═══════════════════════════════════════════════════════════════

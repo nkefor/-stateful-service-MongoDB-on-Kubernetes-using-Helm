@@ -8,6 +8,7 @@ Credentials are managed through environment variables for security.
 import smtplib
 import logging
 import os
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
@@ -79,7 +80,7 @@ class EmailAutomation:
 
     def validate_email(self, email: str) -> bool:
         """
-        Basic email validation.
+        Enhanced email validation with regex pattern.
 
         Args:
             email: Email address to validate
@@ -87,9 +88,12 @@ class EmailAutomation:
         Returns:
             True if valid, False otherwise
         """
-        if not email or '@' not in email:
+        if not email:
             return False
-        return True
+
+        # RFC 5322 compliant email regex (simplified)
+        pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        return bool(re.match(pattern, email))
 
     def send_email(
         self,
@@ -120,6 +124,20 @@ class EmailAutomation:
         if not self.validate_email(recipient_email):
             logger.error(f"Invalid recipient email: {recipient_email}")
             return False
+
+        # Validate CC emails
+        if cc:
+            for email in cc:
+                if not self.validate_email(email):
+                    logger.error(f"Invalid CC email: {email}")
+                    return False
+
+        # Validate BCC emails
+        if bcc:
+            for email in bcc:
+                if not self.validate_email(email):
+                    logger.error(f"Invalid BCC email: {email}")
+                    return False
 
         for attempt in range(1, self.max_retries + 1):
             try:
@@ -213,6 +231,59 @@ class EmailAutomation:
 
         except Exception as e:
             logger.error(f"Failed to attach file {file_path}: {str(e)}")
+
+    def send_batch_emails(
+        self,
+        recipients: List[str],
+        subject: str,
+        body: str,
+        html_body: Optional[str] = None,
+        rate_limit_delay: int = 2
+    ) -> dict:
+        """
+        Send emails to multiple recipients with rate limiting.
+
+        Args:
+            recipients: List of recipient email addresses
+            subject: Email subject
+            body: Plain text email body
+            html_body: Optional HTML email body
+            rate_limit_delay: Seconds to wait between emails (default 2)
+
+        Returns:
+            Dictionary with success and failure counts
+        """
+        results = {'success': 0, 'failed': 0, 'invalid': 0}
+
+        for i, recipient in enumerate(recipients, 1):
+            logger.info(f"Sending email {i}/{len(recipients)} to {recipient}")
+
+            # Validate before sending
+            if not self.validate_email(recipient):
+                logger.warning(f"Skipping invalid email: {recipient}")
+                results['invalid'] += 1
+                continue
+
+            # Send email
+            success = self.send_email(
+                recipient_email=recipient,
+                subject=subject,
+                body=body,
+                html_body=html_body
+            )
+
+            if success:
+                results['success'] += 1
+            else:
+                results['failed'] += 1
+
+            # Rate limiting - wait between sends
+            if i < len(recipients):
+                time.sleep(rate_limit_delay)
+
+        logger.info(f"Batch send complete: {results['success']} sent, "
+                   f"{results['failed']} failed, {results['invalid']} invalid")
+        return results
 
 
 def generate_report() -> tuple[str, str]:

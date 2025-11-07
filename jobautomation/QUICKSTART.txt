@@ -1,0 +1,108 @@
+╔═══════════════════════════════════════════════════════════════╗
+║         JOB AUTO-APPLY BOT - WINDOWS QUICK START              ║
+║              Get Started in 5 Minutes!                        ║
+╚═══════════════════════════════════════════════════════════════╝
+
+
+STEP 1: INSTALL PYTHON
+──────────────────────────────────────────────────────────────
+1. Go to: https://python.org/downloads/
+2. Download Python 3.11 or newer
+3. Run installer
+4. ✓ CHECK THE BOX: "Add Python to PATH"
+5. Click "Install Now"
+6. Verify: Open Command Prompt, type: python --version
+
+
+STEP 2: RUN SETUP
+──────────────────────────────────────────────────────────────
+1. Double-click: SETUP_WINDOWS.bat
+2. Wait 2-3 minutes for packages to install
+3. Press any key when done
+
+
+STEP 3: EDIT YOUR CONFIG
+──────────────────────────────────────────────────────────────
+1. Open: config/config.json
+2. Change these fields:
+   - "name": "Your Name"
+   - "email": "your.email@gmail.com"
+   - "phone": "+1-555-123-4567"
+   - "linkedin_password": "YOUR_PASSWORD"
+   - "resume_path": "resumes/Your_Resume.pdf"
+3. Save the file
+
+
+STEP 4: ADD YOUR RESUME
+──────────────────────────────────────────────────────────────
+1. Copy your resume PDF to: resumes/ folder
+2. Example: resumes/John_Doe_Resume.pdf
+3. Make sure the filename matches config.json
+
+
+STEP 5: RUN THE BOT
+──────────────────────────────────────────────────────────────
+1. Double-click: RUN.bat
+2. Watch the browser work automatically
+3. Check your email for summary
+
+
+THAT'S IT! 🚀
+──────────────────────────────────────────────────────────────
+
+
+OPTIONAL: GMAIL API (For Email Notifications)
+──────────────────────────────────────────────────────────────
+1. Go to: https://console.cloud.google.com/
+2. Create new project
+3. Enable "Gmail API"
+4. Create "OAuth credentials" → "Desktop app"
+5. Download credentials.json
+6. Move to: config/credentials.json
+7. First run will ask for Gmail permission (allow it)
+
+
+WHAT DOES IT DO?
+──────────────────────────────────────────────────────────────
+✓ Searches LinkedIn and Indeed for jobs matching your criteria
+✓ Automatically applies using "Easy Apply" buttons
+✓ Fills your name, email, phone, uploads resume
+✓ Tracks all applications
+✓ Sends email summary
+✓ Saves logs to logs/ folder
+
+
+TROUBLESHOOTING
+──────────────────────────────────────────────────────────────
+Problem: "Python is not recognized"
+Fix: Reinstall Python, check "Add Python to PATH"
+
+Problem: "ModuleNotFoundError"
+Fix: Run SETUP_WINDOWS.bat again
+
+Problem: Browser doesn't open
+Fix: Install Google Chrome
+
+Problem: Applications not submitting
+Fix: Check logs/job_automation.log for errors
+
+
+TIPS FOR SUCCESS
+──────────────────────────────────────────────────────────────
+→ Update your resume with relevant keywords
+→ Start with 10-15 applications to test
+→ Check your LinkedIn messages daily
+→ Follow up with companies you're interested in
+→ Keep a spreadsheet of applications
+
+
+NEED HELP?
+──────────────────────────────────────────────────────────────
+Read: README.md (comprehensive guide)
+Check: logs/job_automation.log (error details)
+Email: support@example.com
+
+
+═══════════════════════════════════════════════════════════════
+              Good Luck With Your Job Search! 🎯
+═══════════════════════════════════════════════════════════════

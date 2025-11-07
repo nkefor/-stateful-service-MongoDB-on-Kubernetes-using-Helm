@@ -1,0 +1,87 @@
+# Job Automation - Git Ignore File
+
+# CRITICAL: Sensitive Configuration Files
+.env
+*.env
+!.env.example
+config/config.json
+config.json
+credentials.json
+secrets.yaml
+secrets.json
+
+# Chrome Profile (contains login sessions)
+chrome_automation_profile/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+ENV/
+env/
+.venv
+
+# Logs and Output
+*.log
+logs/
+job_application.log
+automation.log
+
+# Screenshots (may contain personal info)
+screenshots/
+*.png
+*.jpg
+*.jpeg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+desktop.ini
+
+# Temporary files
+*.tmp
+*.bak
+*.backup
+
+# Downloaded drivers
+chromedriver.zip
+chromedriver-win64/
+geckodriver/
+
+# Personal documents
+resumes/*.pdf
+resumes/*.docx
+cover_letters/*.pdf
+cover_letters/*.docx
+
+# Application tracking data
+applications.db
+applications.json
+applied_jobs.json

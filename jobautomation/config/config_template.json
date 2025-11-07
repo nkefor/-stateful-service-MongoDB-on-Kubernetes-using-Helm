@@ -1,0 +1,73 @@
+{
+  "personal_info": {
+    "name": "Keff",
+    "email": "keff2@example.com",
+    "phone": "+1-555-123-4567",
+    "linkedin_email": "keff2@example.com",
+    "linkedin_password": "REPLACE_WITH_YOUR_LINKEDIN_PASSWORD",
+    "resume_path": "resumes/Resume.pdf",
+    "cover_letter_path": "cover_letters/Cover_Letter.pdf"
+  },
+
+  "job_preferences": {
+    "job_titles": [
+      "DevOps Engineer",
+      "Cloud Engineer",
+      "Site Reliability Engineer",
+      "Infrastructure Engineer",
+      "Platform Engineer",
+      "AWS Engineer",
+      "Kubernetes Engineer"
+    ],
+    "locations": [
+      "Remote",
+      "United States",
+      "New York, NY",
+      "San Francisco, CA",
+      "Seattle, WA",
+      "Austin, TX"
+    ],
+    "keywords": [
+      "AWS",
+      "Kubernetes",
+      "Terraform",
+      "Docker",
+      "CI/CD",
+      "Python",
+      "DevSecOps",
+      "Jenkins",
+      "GitOps"
+    ],
+    "experience_level": [
+      "Entry level",
+      "Mid-Senior level"
+    ],
+    "remote_preference": "remote_only",
+    "salary_min": 80000
+  },
+
+  "platforms": {
+    "linkedin": true,
+    "indeed": true,
+    "ziprecruiter": false
+  },
+
+  "automation_settings": {
+    "max_applications_per_run": 5,
+    "delay_between_applications": 10,
+    "headless_browser": false,
+    "save_screenshots": true,
+    "send_email_notifications": false
+  },
+
+  "filters": {
+    "exclude_companies": [],
+    "exclude_keywords": [
+      "unpaid",
+      "volunteer",
+      "commission only",
+      "internship"
+    ],
+    "required_keywords": []
+  }
+}
