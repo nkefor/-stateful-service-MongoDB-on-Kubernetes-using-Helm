@@ -3,18 +3,23 @@ kind: Namespace
 metadata:
   name: backups
 ---
-apiVersion: v1
-kind: Secret
-metadata:
-  name: s3-credentials
-  namespace: backups
-type: Opaque
-stringData:
-  AWS_ACCESS_KEY_ID: "CHANGE-ME"
-  AWS_SECRET_ACCESS_KEY: "CHANGE-ME"
-  AWS_DEFAULT_REGION: "us-east-1"
-  S3_ENDPOINT: "https://us-east-1.linodeobjects.com"
-  S3_BUCKET: "s3://your-bucket-name/mongo-dumps"
+# IMPORTANT: Create the s3-credentials Secret separately for security.
+# Never commit actual credentials to version control.
+#
+# Create the secret using kubectl:
+#   kubectl create secret generic s3-credentials \
+#     --namespace=backups \
+#     --from-literal=AWS_ACCESS_KEY_ID='your-access-key' \
+#     --from-literal=AWS_SECRET_ACCESS_KEY='your-secret-key' \
+#     --from-literal=AWS_DEFAULT_REGION='us-east-1' \
+#     --from-literal=S3_ENDPOINT='https://us-east-1.linodeobjects.com' \
+#     --from-literal=S3_BUCKET='s3://your-bucket-name/mongo-dumps'
+#
+# Or use a secret management tool like:
+# - External Secrets Operator
+# - Sealed Secrets
+# - HashiCorp Vault
+# - Cloud provider secret managers (AWS Secrets Manager, GCP Secret Manager, etc.)
 ---
 apiVersion: batch/v1
 kind: CronJob
