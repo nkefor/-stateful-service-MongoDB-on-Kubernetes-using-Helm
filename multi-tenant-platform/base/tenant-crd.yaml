@@ -1,0 +1,209 @@
+# Multi-Tenant Platform - Tenant Custom Resource Definition
+# This CRD defines the tenant model for the platform
+# Works alongside Capsule for enhanced tenant management
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tenants.platform.devsecops.io
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: tenant-management
+spec:
+  group: platform.devsecops.io
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          required:
+            - spec
+          properties:
+            spec:
+              type: object
+              required:
+                - name
+                - tier
+                - owner
+              properties:
+                name:
+                  type: string
+                  description: "Unique tenant identifier"
+                  pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+                  maxLength: 63
+                displayName:
+                  type: string
+                  description: "Human-readable tenant name"
+                tier:
+                  type: string
+                  description: "Service tier determining resource limits"
+                  enum:
+                    - free
+                    - starter
+                    - professional
+                    - enterprise
+                owner:
+                  type: object
+                  required:
+                    - email
+                  properties:
+                    email:
+                      type: string
+                      format: email
+                    team:
+                      type: string
+                    costCenter:
+                      type: string
+                environments:
+                  type: array
+                  description: "Enabled environments for tenant"
+                  items:
+                    type: string
+                    enum:
+                      - dev
+                      - staging
+                      - prod
+                  default:
+                    - dev
+                resourceLimits:
+                  type: object
+                  description: "Override default tier limits"
+                  properties:
+                    maxNamespaces:
+                      type: integer
+                      minimum: 1
+                      maximum: 100
+                    maxCPU:
+                      type: string
+                      pattern: "^[0-9]+(m|[0-9]*)?$"
+                    maxMemory:
+                      type: string
+                      pattern: "^[0-9]+(Mi|Gi)$"
+                    maxStorage:
+                      type: string
+                      pattern: "^[0-9]+(Mi|Gi|Ti)$"
+                    maxPods:
+                      type: integer
+                      minimum: 1
+                securityProfile:
+                  type: string
+                  description: "Security profile for tenant workloads"
+                  enum:
+                    - restricted
+                    - baseline
+                    - privileged
+                  default: restricted
+                allowedRegistries:
+                  type: array
+                  description: "Allowed container registries"
+                  items:
+                    type: string
+                  default:
+                    - "docker.io"
+                    - "gcr.io"
+                    - "ghcr.io"
+                networkPolicy:
+                  type: object
+                  properties:
+                    isolationMode:
+                      type: string
+                      enum:
+                        - strict    # No cross-tenant traffic
+                        - relaxed   # Allow specific cross-tenant
+                        - none      # Platform default policies
+                      default: strict
+                    allowedExternalEgress:
+                      type: array
+                      items:
+                        type: string
+                gitOps:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                      default: true
+                    repoURL:
+                      type: string
+                    branch:
+                      type: string
+                      default: main
+                    path:
+                      type: string
+                observability:
+                  type: object
+                  properties:
+                    metricsRetention:
+                      type: string
+                      default: "7d"
+                    logsRetention:
+                      type: string
+                      default: "7d"
+                    alertingEnabled:
+                      type: boolean
+                      default: true
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum:
+                    - Pending
+                    - Provisioning
+                    - Active
+                    - Suspended
+                    - Terminating
+                namespaces:
+                  type: array
+                  items:
+                    type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+                resourceUsage:
+                  type: object
+                  properties:
+                    currentCPU:
+                      type: string
+                    currentMemory:
+                      type: string
+                    currentStorage:
+                      type: string
+                    currentPods:
+                      type: integer
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Tier
+          type: string
+          jsonPath: .spec.tier
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Namespaces
+          type: integer
+          jsonPath: .status.namespaces
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Cluster
+  names:
+    plural: tenants
+    singular: tenant
+    kind: Tenant
+    shortNames:
+      - ten

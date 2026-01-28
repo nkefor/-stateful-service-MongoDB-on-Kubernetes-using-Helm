@@ -1,0 +1,68 @@
+# Platform System Namespace
+# Houses all platform-level components and controllers
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform-system
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: platform-core
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+  annotations:
+    platform.devsecops.io/description: "Platform system namespace for controllers and services"
+---
+# GitOps Namespace for ArgoCD
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    app.kubernetes.io/name: argocd
+    app.kubernetes.io/component: gitops
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+  annotations:
+    platform.devsecops.io/description: "ArgoCD GitOps controller namespace"
+---
+# Policy Engine Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kyverno
+  labels:
+    app.kubernetes.io/name: kyverno
+    app.kubernetes.io/component: policy-engine
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+  annotations:
+    platform.devsecops.io/description: "Kyverno policy engine namespace"
+---
+# Observability Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/name: observability
+    app.kubernetes.io/component: monitoring
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce-version: latest
+  annotations:
+    platform.devsecops.io/description: "Observability stack namespace (Prometheus, Loki, Grafana)"
+---
+# Security Scanning Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: security-scanning
+  labels:
+    app.kubernetes.io/name: security-scanning
+    app.kubernetes.io/component: security
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+  annotations:
+    platform.devsecops.io/description: "Security scanning tools namespace (Trivy, Falco)"

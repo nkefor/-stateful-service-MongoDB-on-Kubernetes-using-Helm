@@ -1,0 +1,430 @@
+# Kyverno Tenant Isolation and Compliance Policies
+# Enforces multi-tenant isolation and organizational compliance
+---
+# Require tenant labels on all resources
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-tenant-labels
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Require Tenant Labels
+    policies.kyverno.io/description: >-
+      All resources in tenant namespaces must have required labels for identification,
+      cost allocation, and audit purposes.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-tenant-label
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Service
+                - ConfigMap
+                - Secret
+                - PersistentVolumeClaim
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Resources must have 'platform.devsecops.io/tenant' and 'platform.devsecops.io/app' labels."
+        pattern:
+          metadata:
+            labels:
+              platform.devsecops.io/tenant: "?*"
+              platform.devsecops.io/app: "?*"
+---
+# Add default tenant labels via mutation
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-tenant-labels
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: low
+  annotations:
+    policies.kyverno.io/title: Add Tenant Labels
+    policies.kyverno.io/description: >-
+      Automatically adds tenant labels based on the namespace label.
+spec:
+  background: false
+  rules:
+    - name: add-tenant-label-from-namespace
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+                - Deployment
+                - StatefulSet
+                - DaemonSet
+                - Service
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      mutate:
+        patchStrategicMerge:
+          metadata:
+            labels:
+              +(platform.devsecops.io/tenant): "{{ request.namespace | split('-') | first }}"
+---
+# Restrict allowed container registries
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-image-registries
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Restrict Image Registries
+    policies.kyverno.io/description: >-
+      Images may only be pulled from allowed registries. This policy ensures
+      that only approved container registries are used.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-registries
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Images may only be pulled from approved registries: docker.io, gcr.io, ghcr.io, quay.io, registry.k8s.io"
+        pattern:
+          spec:
+            containers:
+              - image: "docker.io/* | gcr.io/* | ghcr.io/* | quay.io/* | registry.k8s.io/* | *:*"
+            =(initContainers):
+              - image: "docker.io/* | gcr.io/* | ghcr.io/* | quay.io/* | registry.k8s.io/* | *:*"
+---
+# Disallow latest tag
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Tag
+    policies.kyverno.io/description: >-
+      The ':latest' tag is mutable and can lead to unexpected behavior. This policy
+      requires that container images specify a non-latest tag.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-image-tag
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Using 'latest' tag is not allowed. Images must have a specific version tag."
+        pattern:
+          spec:
+            containers:
+              - image: "!*:latest"
+            =(initContainers):
+              - image: "!*:latest"
+---
+# Require resource limits
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/description: >-
+      All containers must specify resource requests and limits to ensure fair
+      resource allocation and prevent resource exhaustion.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Containers must specify resource limits for CPU and memory."
+        pattern:
+          spec:
+            containers:
+              - resources:
+                  limits:
+                    memory: "?*"
+                    cpu: "?*"
+                  requests:
+                    memory: "?*"
+                    cpu: "?*"
+---
+# Require probes for production workloads
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-probes
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Reliability
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Require Health Probes
+    policies.kyverno.io/description: >-
+      Liveness and readiness probes are required for all containers to ensure
+      Kubernetes can properly manage the application lifecycle.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-liveness-probe
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              namespaceSelector:
+                matchLabels:
+                  platform.devsecops.io/environment: prod
+      validate:
+        message: "Liveness and readiness probes are required for production workloads."
+        pattern:
+          spec:
+            template:
+              spec:
+                containers:
+                  - livenessProbe:
+                      periodSeconds: ">0"
+                    readinessProbe:
+                      periodSeconds: ">0"
+---
+# Require pod disruption budget for production
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pdb-production
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Reliability
+    policies.kyverno.io/severity: low
+  annotations:
+    policies.kyverno.io/title: Require PodDisruptionBudget for Production
+    policies.kyverno.io/description: >-
+      Deployments in production namespaces should have a matching PodDisruptionBudget
+      to ensure availability during cluster maintenance.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-pdb-exists
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  platform.devsecops.io/environment: prod
+      preconditions:
+        all:
+          - key: "{{ request.object.spec.replicas }}"
+            operator: GreaterThan
+            value: 1
+      validate:
+        message: "Production deployments with more than 1 replica should have a PodDisruptionBudget."
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.metadata.labels.app }}"
+                operator: AnyNotIn
+                value: "{{ pdb_apps }}"
+---
+# Restrict Service types
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-service-types
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Restrict Service Types
+    policies.kyverno.io/description: >-
+      Tenants cannot create LoadBalancer or NodePort services unless explicitly
+      allowed by their tier.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: restrict-nodeport-loadbalancer
+      match:
+        any:
+          - resources:
+              kinds:
+                - Service
+              namespaceSelector:
+                matchLabels:
+                  platform.devsecops.io/tier: free
+      validate:
+        message: "Free tier tenants cannot create LoadBalancer or NodePort services."
+        pattern:
+          spec:
+            type: "ClusterIP | ExternalName"
+---
+# Restrict Ingress hostnames to tenant domain
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-ingress-hosts
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Restrict Ingress Hosts
+    policies.kyverno.io/description: >-
+      Ingress hosts must match the tenant's allowed domain pattern to prevent
+      tenants from hijacking other tenants' domains.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: validate-ingress-host
+      match:
+        any:
+          - resources:
+              kinds:
+                - Ingress
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Ingress hosts must match pattern: *.{tenant}.platform.example.com"
+        deny:
+          conditions:
+            all:
+              - key: "{{ request.object.spec.rules[].host }}"
+                operator: AnyNotIn
+                value: "*.{{ request.namespace | split('-') | first }}.platform.example.com"
+---
+# Generate default network policy for new namespaces
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-default-network-policy
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Multi-Tenancy
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Generate Default Network Policy
+    policies.kyverno.io/description: >-
+      Automatically creates a default-deny network policy for all tenant namespaces.
+spec:
+  rules:
+    - name: generate-default-deny
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-all
+        namespace: "{{ request.object.metadata.name }}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+              - Egress
+---
+# Require annotations for cost allocation
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-cost-annotations
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: FinOps
+    policies.kyverno.io/severity: low
+  annotations:
+    policies.kyverno.io/title: Require Cost Annotations
+    policies.kyverno.io/description: >-
+      All workloads should have cost allocation annotations for chargeback purposes.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-cost-center
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+                - StatefulSet
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Workloads should have 'platform.devsecops.io/cost-center' annotation."
+        pattern:
+          metadata:
+            annotations:
+              platform.devsecops.io/cost-center: "?*"

@@ -1,0 +1,252 @@
+# Loki Stack Helm Values for Multi-Tenant Platform
+# Configures Loki with tenant-aware log aggregation
+---
+# Chart: grafana/loki-stack
+
+loki:
+  enabled: true
+
+  # Loki configuration
+  config:
+    auth_enabled: true  # Enable multi-tenancy
+
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9096
+      log_level: info
+
+    common:
+      path_prefix: /var/loki
+      storage:
+        filesystem:
+          chunks_directory: /var/loki/chunks
+          rules_directory: /var/loki/rules
+      replication_factor: 1
+      ring:
+        instance_addr: 127.0.0.1
+        kvstore:
+          store: inmemory
+
+    schema_config:
+      configs:
+        - from: 2020-10-24
+          store: boltdb-shipper
+          object_store: filesystem
+          schema: v11
+          index:
+            prefix: index_
+            period: 24h
+
+    storage_config:
+      boltdb_shipper:
+        active_index_directory: /var/loki/boltdb-shipper-active
+        cache_location: /var/loki/boltdb-shipper-cache
+        cache_ttl: 24h
+        shared_store: filesystem
+      filesystem:
+        directory: /var/loki/chunks
+
+    compactor:
+      working_directory: /var/loki/boltdb-shipper-compactor
+      shared_store: filesystem
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 150
+
+    limits_config:
+      enforce_metric_name: false
+      reject_old_samples: true
+      reject_old_samples_max_age: 168h
+      max_cache_freshness_per_query: 10m
+      split_queries_by_interval: 15m
+      # Per-tenant limits
+      per_tenant_override_config: /etc/loki/overrides.yaml
+
+    # Tenant-specific overrides
+    overrides:
+      # Free tier - limited retention
+      free:
+        retention_period: 72h
+        ingestion_rate_mb: 4
+        ingestion_burst_size_mb: 6
+        max_streams_per_user: 1000
+        max_chunks_per_query: 2000000
+
+      # Starter tier
+      starter:
+        retention_period: 168h
+        ingestion_rate_mb: 8
+        ingestion_burst_size_mb: 12
+        max_streams_per_user: 5000
+        max_chunks_per_query: 5000000
+
+      # Professional tier
+      professional:
+        retention_period: 336h
+        ingestion_rate_mb: 16
+        ingestion_burst_size_mb: 24
+        max_streams_per_user: 10000
+        max_chunks_per_query: 10000000
+
+      # Enterprise tier
+      enterprise:
+        retention_period: 720h
+        ingestion_rate_mb: 32
+        ingestion_burst_size_mb: 48
+        max_streams_per_user: 50000
+        max_chunks_per_query: 20000000
+
+    ruler:
+      storage:
+        type: local
+        local:
+          directory: /var/loki/rules
+      rule_path: /var/loki/rules-temp
+      alertmanager_url: http://prometheus-alertmanager:9093
+      ring:
+        kvstore:
+          store: inmemory
+      enable_api: true
+
+  # Persistence
+  persistence:
+    enabled: true
+    storageClassName: standard
+    size: 100Gi
+
+  # Resources
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 2000m
+      memory: 4Gi
+
+  # Security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    fsGroup: 10001
+
+# Promtail configuration
+promtail:
+  enabled: true
+
+  config:
+    clients:
+      - url: http://loki:3100/loki/api/v1/push
+        tenant_id: platform  # Default tenant
+
+    snippets:
+      # Pipeline stages for tenant extraction
+      pipelineStages:
+        - cri: {}
+        - json:
+            expressions:
+              level: level
+              message: msg
+        - labels:
+            level:
+        - tenant:
+            source: namespace
+            value: '{{ regexReplaceAll "^([^-]+)-.*$" .Value "${1}" }}'
+
+      # Scrape configs
+      scrapeConfigs: |
+        # Scrape tenant namespace pods
+        - job_name: tenant-pods
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            # Only scrape pods in tenant namespaces
+            - source_labels: [__meta_kubernetes_namespace]
+              regex: ".*-(dev|staging|prod)$"
+              action: keep
+            # Extract tenant name from namespace
+            - source_labels: [__meta_kubernetes_namespace]
+              regex: "^([^-]+)-.*$"
+              target_label: tenant
+              replacement: $1
+            # Standard relabels
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              target_label: __host__
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: namespace
+            - source_labels: [__meta_kubernetes_pod_name]
+              target_label: pod
+            - source_labels: [__meta_kubernetes_pod_container_name]
+              target_label: container
+            - replacement: /var/log/pods/*$1/*.log
+              separator: /
+              source_labels:
+                - __meta_kubernetes_pod_uid
+                - __meta_kubernetes_pod_container_name
+              target_label: __path__
+
+        # Scrape platform namespace pods
+        - job_name: platform-pods
+          kubernetes_sd_configs:
+            - role: pod
+          relabel_configs:
+            - source_labels: [__meta_kubernetes_namespace]
+              regex: "platform-system|observability|argocd|kyverno"
+              action: keep
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: tenant
+              replacement: platform
+            - source_labels: [__meta_kubernetes_pod_node_name]
+              target_label: __host__
+            - action: labelmap
+              regex: __meta_kubernetes_pod_label_(.+)
+            - source_labels: [__meta_kubernetes_namespace]
+              target_label: namespace
+            - source_labels: [__meta_kubernetes_pod_name]
+              target_label: pod
+            - source_labels: [__meta_kubernetes_pod_container_name]
+              target_label: container
+            - replacement: /var/log/pods/*$1/*.log
+              separator: /
+              source_labels:
+                - __meta_kubernetes_pod_uid
+                - __meta_kubernetes_pod_container_name
+              target_label: __path__
+
+  # Resources
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+  # Security context
+  securityContext:
+    runAsNonRoot: false
+    runAsUser: 0
+    readOnlyRootFilesystem: true
+
+  # Tolerations to run on all nodes
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+
+  # Volume mounts for log access
+  extraVolumes:
+    - name: containers
+      hostPath:
+        path: /var/lib/docker/containers
+    - name: pods
+      hostPath:
+        path: /var/log/pods
+
+  extraVolumeMounts:
+    - name: containers
+      mountPath: /var/lib/docker/containers
+      readOnly: true
+    - name: pods
+      mountPath: /var/log/pods
+      readOnly: true

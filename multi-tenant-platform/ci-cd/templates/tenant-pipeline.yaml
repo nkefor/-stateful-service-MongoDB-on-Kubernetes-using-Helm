@@ -1,0 +1,400 @@
+# Tenant CI/CD Pipeline Template (GitHub Actions)
+# Provides secure build, scan, and deploy workflow for tenant applications
+# Variables: {{ .TenantName }}, {{ .RepoName }}, {{ .Registry }}
+---
+name: "{{ .TenantName }} - Build and Deploy"
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - "apps/**"
+      - "charts/**"
+      - ".github/workflows/**"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "apps/**"
+      - "charts/**"
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+        default: dev
+
+env:
+  TENANT_NAME: "{{ .TenantName }}"
+  REGISTRY: "{{ .Registry }}"
+  # Security: Never log secrets
+  DOCKER_CONTENT_TRUST: "1"
+
+jobs:
+  # ============================================
+  # Stage 1: Security Scanning and Validation
+  # ============================================
+  security-scan:
+    name: "Security Scanning"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      scan-passed: ${{ steps.trivy-check.outputs.passed }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Trivy vulnerability scanner (filesystem)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: "fs"
+          scan-ref: "."
+          format: "sarif"
+          output: "trivy-fs-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "0"
+
+      - name: Upload Trivy scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-fs-results.sarif"
+          category: "trivy-filesystem"
+
+      - name: Run Gitleaks for secrets detection
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Checkov for IaC scanning
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: kubernetes,helm
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          soft_fail: true
+
+      - name: Upload Checkov results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: checkov-results.sarif
+          category: "checkov-iac"
+
+      - name: YAML Lint
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: "apps/ charts/"
+          config_file: .yamllint.yaml
+          strict: true
+
+      - name: Helm Lint
+        run: |
+          for chart in charts/*/; do
+            if [ -f "${chart}Chart.yaml" ]; then
+              echo "Linting ${chart}..."
+              helm lint "${chart}" --strict
+            fi
+          done
+
+      - name: Check scan results
+        id: trivy-check
+        run: |
+          # Check for critical vulnerabilities
+          if grep -q '"severity": "CRITICAL"' trivy-fs-results.sarif 2>/dev/null; then
+            echo "Critical vulnerabilities found!"
+            echo "passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          echo "passed=true" >> $GITHUB_OUTPUT
+
+  # ============================================
+  # Stage 2: Build and Push Container Images
+  # ============================================
+  build:
+    name: "Build Container Images"
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: needs.security-scan.outputs.scan-passed == 'true'
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tag: ${{ steps.meta.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.TENANT_NAME }}/app
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=semver,pattern={{version}}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+          build-args: |
+            TENANT=${{ env.TENANT_NAME }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            VCS_REF=${{ github.sha }}
+
+      - name: Scan built image
+        if: github.event_name != 'pull_request'
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.TENANT_NAME }}/app:${{ steps.meta.outputs.version }}"
+          format: "sarif"
+          output: "trivy-image-results.sarif"
+          severity: "CRITICAL,HIGH"
+          exit-code: "1"
+
+      - name: Upload image scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-image-results.sarif"
+          category: "trivy-image"
+
+      - name: Sign container image
+        if: github.event_name != 'pull_request'
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.TENANT_NAME }}/app@${{ steps.build.outputs.digest }}
+
+  # ============================================
+  # Stage 3: Policy Validation
+  # ============================================
+  policy-check:
+    name: "Policy Validation"
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name != 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Kyverno CLI
+        run: |
+          curl -LO https://github.com/kyverno/kyverno/releases/download/v1.11.0/kyverno-cli_v1.11.0_linux_x86_64.tar.gz
+          tar -xvf kyverno-cli_v1.11.0_linux_x86_64.tar.gz
+          sudo mv kyverno /usr/local/bin/
+
+      - name: Validate against platform policies
+        run: |
+          # Download platform policies
+          curl -sL "${{ secrets.PLATFORM_POLICIES_URL }}" -o policies.yaml
+
+          # Validate all manifests against policies
+          for manifest in apps/*/k8s/*.yaml charts/*/templates/*.yaml; do
+            if [ -f "$manifest" ]; then
+              echo "Validating $manifest..."
+              kyverno apply policies.yaml --resource "$manifest" --detailed-results
+            fi
+          done
+
+      - name: Check for privileged containers
+        run: |
+          # Ensure no privileged containers
+          if grep -r "privileged: true" apps/ charts/; then
+            echo "ERROR: Privileged containers are not allowed!"
+            exit 1
+          fi
+
+      - name: Check for root containers
+        run: |
+          # Ensure containers don't run as root
+          if grep -r "runAsUser: 0" apps/ charts/; then
+            echo "ERROR: Running as root is not allowed!"
+            exit 1
+          fi
+
+      - name: Validate image registries
+        run: |
+          # Check that only approved registries are used
+          ALLOWED_REGISTRIES="${{ env.REGISTRY }} docker.io gcr.io ghcr.io quay.io"
+          for manifest in apps/*/k8s/*.yaml; do
+            if [ -f "$manifest" ]; then
+              images=$(grep -oP 'image:\s*\K[^\s]+' "$manifest" || true)
+              for image in $images; do
+                valid=false
+                for registry in $ALLOWED_REGISTRIES; do
+                  if [[ "$image" == "$registry"* ]] || [[ "$image" != *"/"* ]]; then
+                    valid=true
+                    break
+                  fi
+                done
+                if [ "$valid" = false ]; then
+                  echo "ERROR: Image $image is not from an approved registry!"
+                  exit 1
+                fi
+              done
+            fi
+          done
+
+  # ============================================
+  # Stage 4: Deploy to Environment
+  # ============================================
+  deploy:
+    name: "Deploy to ${{ github.event.inputs.environment || 'dev' }}"
+    runs-on: ubuntu-latest
+    needs: [build, policy-check]
+    if: github.event_name != 'pull_request'
+    environment:
+      name: ${{ github.event.inputs.environment || 'dev' }}
+      url: https://${{ env.TENANT_NAME }}-${{ github.event.inputs.environment || 'dev' }}.platform.example.com
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+        with:
+          version: "v3.13.0"
+
+      - name: Configure kubectl
+        uses: azure/k8s-set-context@v3
+        with:
+          method: kubeconfig
+          kubeconfig: ${{ secrets.KUBECONFIG }}
+
+      - name: Verify cluster access
+        run: |
+          # Verify we can only access tenant namespaces
+          kubectl auth can-i list pods -n ${{ env.TENANT_NAME }}-${{ github.event.inputs.environment || 'dev' }}
+          # Verify we cannot access other namespaces
+          ! kubectl auth can-i list pods -n kube-system
+
+      - name: Update Helm values
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          IMAGE_TAG="${{ needs.build.outputs.image-tag }}"
+          IMAGE_DIGEST="${{ needs.build.outputs.image-digest }}"
+
+          # Update values file with new image
+          yq eval -i ".image.tag = \"${IMAGE_TAG}\"" "charts/app/values-${ENV}.yaml"
+          yq eval -i ".image.digest = \"${IMAGE_DIGEST}\"" "charts/app/values-${ENV}.yaml"
+
+      - name: Deploy with Helm
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          NAMESPACE="${{ env.TENANT_NAME }}-${ENV}"
+
+          helm upgrade --install \
+            "${{ env.TENANT_NAME }}-app" \
+            ./charts/app \
+            --namespace "${NAMESPACE}" \
+            --values "charts/app/values.yaml" \
+            --values "charts/app/values-${ENV}.yaml" \
+            --set tenant=${{ env.TENANT_NAME }} \
+            --set environment="${ENV}" \
+            --atomic \
+            --timeout 10m \
+            --wait
+
+      - name: Verify deployment
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          NAMESPACE="${{ env.TENANT_NAME }}-${ENV}"
+
+          # Wait for rollout
+          kubectl rollout status deployment/${{ env.TENANT_NAME }}-app -n "${NAMESPACE}" --timeout=5m
+
+          # Health check
+          kubectl get pods -n "${NAMESPACE}" -l "app=${{ env.TENANT_NAME }}-app" -o wide
+
+      - name: Run smoke tests
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          ENDPOINT="https://${{ env.TENANT_NAME }}-${ENV}.platform.example.com/health"
+
+          # Simple health check
+          for i in {1..10}; do
+            if curl -sf "${ENDPOINT}"; then
+              echo "Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i failed, retrying..."
+            sleep 10
+          done
+          echo "Health check failed after 10 attempts"
+          exit 1
+
+  # ============================================
+  # Stage 5: Notify
+  # ============================================
+  notify:
+    name: "Notify"
+    runs-on: ubuntu-latest
+    needs: [deploy]
+    if: always()
+
+    steps:
+      - name: Send Slack notification
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+          channel: "#${{ env.TENANT_NAME }}-deployments"
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        if: always()
+
+      - name: Update deployment status
+        run: |
+          # Update platform dashboard with deployment status
+          curl -X POST "${{ secrets.PLATFORM_API_URL }}/deployments" \
+            -H "Authorization: Bearer ${{ secrets.PLATFORM_API_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "tenant": "${{ env.TENANT_NAME }}",
+              "environment": "${{ github.event.inputs.environment || 'dev' }}",
+              "status": "${{ needs.deploy.result }}",
+              "commit": "${{ github.sha }}",
+              "image_tag": "${{ needs.build.outputs.image-tag }}",
+              "timestamp": "'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'"
+            }'

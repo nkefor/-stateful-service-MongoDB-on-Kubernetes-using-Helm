@@ -1,0 +1,180 @@
+# Tenant LimitRange Template
+# Enforces resource constraints on containers and pods
+# Variables: {{ .TenantName }}, {{ .Namespace }}, {{ .Tier }}, and tier-specific limits
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: tenant-limit-range
+  namespace: "{{ .Namespace }}"
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: limit-range
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+spec:
+  limits:
+    # Container-level limits
+    - type: Container
+      # Default values if not specified
+      default:
+        cpu: "{{ .ContainerDefaultCPU }}"
+        memory: "{{ .ContainerDefaultMemory }}"
+      # Default requests if not specified
+      defaultRequest:
+        cpu: "{{ .ContainerDefaultRequestCPU }}"
+        memory: "{{ .ContainerDefaultRequestMemory }}"
+      # Maximum allowed
+      max:
+        cpu: "{{ .ContainerMaxCPU }}"
+        memory: "{{ .ContainerMaxMemory }}"
+      # Minimum required
+      min:
+        cpu: "10m"
+        memory: "16Mi"
+      # Max limit/request ratio (prevent over-provisioning)
+      maxLimitRequestRatio:
+        cpu: "10"
+        memory: "4"
+
+    # Pod-level limits (aggregate of all containers)
+    - type: Pod
+      max:
+        cpu: "{{ .PodMaxCPU }}"
+        memory: "{{ .PodMaxMemory }}"
+      min:
+        cpu: "10m"
+        memory: "16Mi"
+
+    # PersistentVolumeClaim limits
+    - type: PersistentVolumeClaim
+      max:
+        storage: "{{ .PVCMaxStorage }}"
+      min:
+        storage: "1Gi"
+---
+# Tier-specific LimitRange examples
+
+# Free Tier LimitRange
+# apiVersion: v1
+# kind: LimitRange
+# metadata:
+#   name: free-tier-limits
+#   namespace: "{{ .Namespace }}"
+# spec:
+#   limits:
+#     - type: Container
+#       default:
+#         cpu: "200m"
+#         memory: "256Mi"
+#       defaultRequest:
+#         cpu: "50m"
+#         memory: "64Mi"
+#       max:
+#         cpu: "1"
+#         memory: "2Gi"
+#       min:
+#         cpu: "10m"
+#         memory: "16Mi"
+#     - type: Pod
+#       max:
+#         cpu: "2"
+#         memory: "4Gi"
+#     - type: PersistentVolumeClaim
+#       max:
+#         storage: "5Gi"
+#       min:
+#         storage: "1Gi"
+
+# Starter Tier LimitRange
+# apiVersion: v1
+# kind: LimitRange
+# metadata:
+#   name: starter-tier-limits
+#   namespace: "{{ .Namespace }}"
+# spec:
+#   limits:
+#     - type: Container
+#       default:
+#         cpu: "500m"
+#         memory: "512Mi"
+#       defaultRequest:
+#         cpu: "100m"
+#         memory: "128Mi"
+#       max:
+#         cpu: "2"
+#         memory: "4Gi"
+#       min:
+#         cpu: "10m"
+#         memory: "16Mi"
+#     - type: Pod
+#       max:
+#         cpu: "4"
+#         memory: "8Gi"
+#     - type: PersistentVolumeClaim
+#       max:
+#         storage: "20Gi"
+#       min:
+#         storage: "1Gi"
+
+# Professional Tier LimitRange
+# apiVersion: v1
+# kind: LimitRange
+# metadata:
+#   name: professional-tier-limits
+#   namespace: "{{ .Namespace }}"
+# spec:
+#   limits:
+#     - type: Container
+#       default:
+#         cpu: "500m"
+#         memory: "512Mi"
+#       defaultRequest:
+#         cpu: "100m"
+#         memory: "128Mi"
+#       max:
+#         cpu: "4"
+#         memory: "8Gi"
+#       min:
+#         cpu: "10m"
+#         memory: "16Mi"
+#     - type: Pod
+#       max:
+#         cpu: "8"
+#         memory: "16Gi"
+#     - type: PersistentVolumeClaim
+#       max:
+#         storage: "50Gi"
+#       min:
+#         storage: "1Gi"
+
+# Enterprise Tier LimitRange
+# apiVersion: v1
+# kind: LimitRange
+# metadata:
+#   name: enterprise-tier-limits
+#   namespace: "{{ .Namespace }}"
+# spec:
+#   limits:
+#     - type: Container
+#       default:
+#         cpu: "1"
+#         memory: "1Gi"
+#       defaultRequest:
+#         cpu: "200m"
+#         memory: "256Mi"
+#       max:
+#         cpu: "8"
+#         memory: "32Gi"
+#       min:
+#         cpu: "10m"
+#         memory: "16Mi"
+#     - type: Pod
+#       max:
+#         cpu: "16"
+#         memory: "64Gi"
+#     - type: PersistentVolumeClaim
+#       max:
+#         storage: "200Gi"
+#       min:
+#         storage: "1Gi"
