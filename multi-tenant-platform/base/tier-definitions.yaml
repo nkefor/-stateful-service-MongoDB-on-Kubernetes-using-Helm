@@ -1,0 +1,213 @@
+# Tenant Tier Definitions
+# Defines resource limits, capabilities, and features for each service tier
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tenant-tier-definitions
+  namespace: platform-system
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: tier-config
+data:
+  tiers.yaml: |
+    # Free Tier - For evaluation and small projects
+    free:
+      displayName: "Free Tier"
+      description: "Basic tier for evaluation and small projects"
+      resources:
+        maxNamespaces: 2
+        maxCPU: "2"
+        maxMemory: "4Gi"
+        maxCPULimit: "4"
+        maxMemoryLimit: "8Gi"
+        maxStorage: "10Gi"
+        maxPods: 20
+        maxServices: 10
+        maxSecrets: 20
+        maxConfigMaps: 20
+        maxPVCs: 5
+        maxLoadBalancers: 0
+        maxNodePorts: 0
+      containerLimits:
+        maxCPU: "1"
+        maxMemory: "2Gi"
+      podLimits:
+        maxCPU: "2"
+        maxMemory: "4Gi"
+      pvcLimits:
+        maxStorage: "5Gi"
+      features:
+        gitOps: true
+        customDomains: false
+        dedicatedNodes: false
+        priorityClasses: false
+        loadBalancers: false
+        nodePortServices: false
+      observability:
+        metricsRetention: "3d"
+        logsRetention: "3d"
+        alerting: false
+        customDashboards: false
+      security:
+        profile: "restricted"
+        allowedRegistries:
+          - "docker.io"
+          - "gcr.io"
+          - "ghcr.io"
+        networkIsolation: "strict"
+        imagePullSecrets: 2
+      support:
+        sla: "best-effort"
+        responseTime: "72h"
+
+    # Starter Tier - For development teams
+    starter:
+      displayName: "Starter Tier"
+      description: "For development teams and small applications"
+      resources:
+        maxNamespaces: 5
+        maxCPU: "8"
+        maxMemory: "16Gi"
+        maxCPULimit: "16"
+        maxMemoryLimit: "32Gi"
+        maxStorage: "50Gi"
+        maxPods: 50
+        maxServices: 25
+        maxSecrets: 50
+        maxConfigMaps: 50
+        maxPVCs: 15
+        maxLoadBalancers: 1
+        maxNodePorts: 3
+      containerLimits:
+        maxCPU: "2"
+        maxMemory: "4Gi"
+      podLimits:
+        maxCPU: "4"
+        maxMemory: "8Gi"
+      pvcLimits:
+        maxStorage: "20Gi"
+      features:
+        gitOps: true
+        customDomains: true
+        dedicatedNodes: false
+        priorityClasses: true
+        loadBalancers: true
+        nodePortServices: true
+      observability:
+        metricsRetention: "7d"
+        logsRetention: "7d"
+        alerting: true
+        customDashboards: false
+      security:
+        profile: "restricted"
+        allowedRegistries:
+          - "docker.io"
+          - "gcr.io"
+          - "ghcr.io"
+          - "quay.io"
+        networkIsolation: "strict"
+        imagePullSecrets: 5
+      support:
+        sla: "standard"
+        responseTime: "24h"
+
+    # Professional Tier - For production workloads
+    professional:
+      displayName: "Professional Tier"
+      description: "For production workloads and larger teams"
+      resources:
+        maxNamespaces: 15
+        maxCPU: "32"
+        maxMemory: "64Gi"
+        maxCPULimit: "64"
+        maxMemoryLimit: "128Gi"
+        maxStorage: "200Gi"
+        maxPods: 200
+        maxServices: 100
+        maxSecrets: 200
+        maxConfigMaps: 200
+        maxPVCs: 50
+        maxLoadBalancers: 5
+        maxNodePorts: 10
+      containerLimits:
+        maxCPU: "4"
+        maxMemory: "8Gi"
+      podLimits:
+        maxCPU: "8"
+        maxMemory: "16Gi"
+      pvcLimits:
+        maxStorage: "50Gi"
+      features:
+        gitOps: true
+        customDomains: true
+        dedicatedNodes: false
+        priorityClasses: true
+        loadBalancers: true
+        nodePortServices: true
+      observability:
+        metricsRetention: "30d"
+        logsRetention: "14d"
+        alerting: true
+        customDashboards: true
+      security:
+        profile: "baseline"
+        allowedRegistries:
+          - "docker.io"
+          - "gcr.io"
+          - "ghcr.io"
+          - "quay.io"
+          - "registry.k8s.io"
+        networkIsolation: "strict"
+        imagePullSecrets: 20
+      support:
+        sla: "business"
+        responseTime: "8h"
+
+    # Enterprise Tier - For large-scale production
+    enterprise:
+      displayName: "Enterprise Tier"
+      description: "For enterprise-scale production workloads"
+      resources:
+        maxNamespaces: 50
+        maxCPU: "128"
+        maxMemory: "256Gi"
+        maxCPULimit: "256"
+        maxMemoryLimit: "512Gi"
+        maxStorage: "1Ti"
+        maxPods: 1000
+        maxServices: 500
+        maxSecrets: 1000
+        maxConfigMaps: 1000
+        maxPVCs: 200
+        maxLoadBalancers: 20
+        maxNodePorts: 50
+      containerLimits:
+        maxCPU: "8"
+        maxMemory: "32Gi"
+      podLimits:
+        maxCPU: "16"
+        maxMemory: "64Gi"
+      pvcLimits:
+        maxStorage: "200Gi"
+      features:
+        gitOps: true
+        customDomains: true
+        dedicatedNodes: true
+        priorityClasses: true
+        loadBalancers: true
+        nodePortServices: true
+      observability:
+        metricsRetention: "90d"
+        logsRetention: "30d"
+        alerting: true
+        customDashboards: true
+      security:
+        profile: "baseline"
+        allowedRegistries:
+          - "*"  # Can use any registry
+        networkIsolation: "configurable"
+        imagePullSecrets: 100
+      support:
+        sla: "enterprise"
+        responseTime: "1h"

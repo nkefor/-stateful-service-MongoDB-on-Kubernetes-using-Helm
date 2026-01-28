@@ -1,0 +1,93 @@
+# Tenant Resource Quota Template
+# Applied to each tenant namespace based on tier
+# Variables: {{ .TenantName }}, {{ .Namespace }}, {{ .Tier }}, and tier-specific limits
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-compute-quota
+  namespace: "{{ .Namespace }}"
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: resource-quota
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+spec:
+  hard:
+    # CPU limits
+    requests.cpu: "{{ .RequestsCPU }}"
+    limits.cpu: "{{ .LimitsCPU }}"
+    # Memory limits
+    requests.memory: "{{ .RequestsMemory }}"
+    limits.memory: "{{ .LimitsMemory }}"
+    # Pod count
+    pods: "{{ .MaxPods }}"
+    # Replication controllers (legacy)
+    replicationcontrollers: "{{ .MaxReplicationControllers }}"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-storage-quota
+  namespace: "{{ .Namespace }}"
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: resource-quota
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+spec:
+  hard:
+    # Storage
+    persistentvolumeclaims: "{{ .MaxPVCs }}"
+    requests.storage: "{{ .MaxStorage }}"
+    # Storage class specific (if using tiered storage)
+    standard.storageclass.storage.k8s.io/requests.storage: "{{ .MaxStandardStorage }}"
+    premium-rwo.storageclass.storage.k8s.io/requests.storage: "{{ .MaxPremiumStorage }}"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-object-quota
+  namespace: "{{ .Namespace }}"
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: resource-quota
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+spec:
+  hard:
+    # Kubernetes objects
+    configmaps: "{{ .MaxConfigMaps }}"
+    secrets: "{{ .MaxSecrets }}"
+    services: "{{ .MaxServices }}"
+    services.loadbalancers: "{{ .MaxLoadBalancers }}"
+    services.nodeports: "{{ .MaxNodePorts }}"
+    # Workload counts
+    count/deployments.apps: "{{ .MaxDeployments }}"
+    count/statefulsets.apps: "{{ .MaxStatefulSets }}"
+    count/jobs.batch: "{{ .MaxJobs }}"
+    count/cronjobs.batch: "{{ .MaxCronJobs }}"
+    # Ingresses
+    count/ingresses.networking.k8s.io: "{{ .MaxIngresses }}"
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: tenant-priority-quota
+  namespace: "{{ .Namespace }}"
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: resource-quota
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+spec:
+  hard:
+    # Priority class quotas (prevent abuse of high priority)
+    pods: "{{ .MaxPods }}"
+  scopeSelector:
+    matchExpressions:
+      - operator: In
+        scopeName: PriorityClass
+        values:
+          - tenant-high
+          - tenant-critical

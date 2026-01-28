@@ -1,0 +1,287 @@
+# Tenant ArgoCD AppProject Template
+# Each tenant gets their own AppProject with restricted permissions
+# Variables: {{ .TenantName }}, {{ .RepoURL }}, {{ .Namespaces }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: "{{ .TenantName }}"
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: gitops
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+  # Finalizer to prevent accidental deletion
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "GitOps project for tenant {{ .TenantName }}"
+
+  # Source repositories - restrict to tenant's repos
+  sourceRepos:
+    {{- range .AllowedRepos }}
+    - "{{ . }}"
+    {{- end }}
+
+  # Destination clusters and namespaces
+  destinations:
+    {{- range .Namespaces }}
+    - namespace: "{{ . }}"
+      server: https://kubernetes.default.svc
+    {{- end }}
+
+  # Deny list - resources tenants cannot create via GitOps
+  clusterResourceBlacklist:
+    - group: ""
+      kind: Namespace
+    - group: ""
+      kind: Node
+    - group: ""
+      kind: PersistentVolume
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+    - group: certificates.k8s.io
+      kind: CertificateSigningRequest
+    - group: scheduling.k8s.io
+      kind: PriorityClass
+    - group: storage.k8s.io
+      kind: StorageClass
+
+  # Allow list - namespace-scoped resources tenants can create
+  namespaceResourceWhitelist:
+    # Core resources
+    - group: ""
+      kind: ConfigMap
+    - group: ""
+      kind: Endpoints
+    - group: ""
+      kind: PersistentVolumeClaim
+    - group: ""
+      kind: Pod
+    - group: ""
+      kind: Secret
+    - group: ""
+      kind: Service
+    - group: ""
+      kind: ServiceAccount
+    # Apps
+    - group: apps
+      kind: Deployment
+    - group: apps
+      kind: ReplicaSet
+    - group: apps
+      kind: StatefulSet
+    - group: apps
+      kind: DaemonSet
+    # Batch
+    - group: batch
+      kind: Job
+    - group: batch
+      kind: CronJob
+    # Networking
+    - group: networking.k8s.io
+      kind: Ingress
+    # Autoscaling
+    - group: autoscaling
+      kind: HorizontalPodAutoscaler
+    # Policy
+    - group: policy
+      kind: PodDisruptionBudget
+    # RBAC (namespace-scoped only)
+    - group: rbac.authorization.k8s.io
+      kind: Role
+    - group: rbac.authorization.k8s.io
+      kind: RoleBinding
+
+  # Sync windows - optional maintenance windows
+  syncWindows:
+    - kind: allow
+      schedule: "* * * * *"
+      duration: 24h
+      applications:
+        - "*"
+      namespaces:
+        {{- range .Namespaces }}
+        - "{{ . }}"
+        {{- end }}
+
+  # Roles for this project
+  roles:
+    # Tenant admin - full access to project
+    - name: tenant-admin
+      description: Full access to tenant applications
+      policies:
+        - p, proj:{{ .TenantName }}:tenant-admin, applications, *, {{ .TenantName }}/*, allow
+        - p, proj:{{ .TenantName }}:tenant-admin, repositories, get, *, allow
+        - p, proj:{{ .TenantName }}:tenant-admin, logs, get, {{ .TenantName }}/*, allow
+        - p, proj:{{ .TenantName }}:tenant-admin, exec, create, {{ .TenantName }}/*, allow
+      groups:
+        - "{{ .TenantName }}-admins"
+
+    # Tenant developer - can sync and view
+    - name: tenant-developer
+      description: Can deploy and view applications
+      policies:
+        - p, proj:{{ .TenantName }}:tenant-developer, applications, get, {{ .TenantName }}/*, allow
+        - p, proj:{{ .TenantName }}:tenant-developer, applications, sync, {{ .TenantName }}/*, allow
+        - p, proj:{{ .TenantName }}:tenant-developer, logs, get, {{ .TenantName }}/*, allow
+      groups:
+        - "{{ .TenantName }}-developers"
+
+    # Tenant viewer - read-only
+    - name: tenant-viewer
+      description: Read-only access to applications
+      policies:
+        - p, proj:{{ .TenantName }}:tenant-viewer, applications, get, {{ .TenantName }}/*, allow
+        - p, proj:{{ .TenantName }}:tenant-viewer, logs, get, {{ .TenantName }}/*, allow
+      groups:
+        - "{{ .TenantName }}-viewers"
+
+  # Orphaned resources monitoring
+  orphanedResources:
+    warn: true
+    ignore:
+      - group: ""
+        kind: ConfigMap
+        name: kube-root-ca.crt
+
+  # Signature keys for signed commits (optional)
+  signatureKeys: []
+---
+# Tenant Application Template
+# Sample application that tenants can customize
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: "{{ .TenantName }}-{{ .AppName }}"
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: gitops
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/app: "{{ .AppName }}"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: "{{ .TenantName }}"
+
+  source:
+    repoURL: "{{ .RepoURL }}"
+    targetRevision: "{{ .Branch }}"
+    path: "{{ .Path }}"
+
+    # Helm support
+    helm:
+      valueFiles:
+        - values.yaml
+        - "values-{{ .Environment }}.yaml"
+      parameters:
+        - name: tenant
+          value: "{{ .TenantName }}"
+        - name: environment
+          value: "{{ .Environment }}"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: "{{ .Namespace }}"
+
+  # Sync policy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+      - CreateNamespace=false
+      - PrunePropagationPolicy=foreground
+      - PruneLast=true
+      - ApplyOutOfSyncOnly=true
+      - Validate=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  # Ignore differences for certain fields
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jsonPointers:
+        - /spec/replicas
+    - kind: ConfigMap
+      jsonPointers:
+        - /data/ca.crt
+
+  # Revision history limit
+  revisionHistoryLimit: 10
+---
+# ApplicationSet for multi-environment deployments
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: "{{ .TenantName }}-apps"
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: gitops
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+spec:
+  generators:
+    # Git directory generator - each directory is an app
+    - git:
+        repoURL: "{{ .RepoURL }}"
+        revision: "{{ .Branch }}"
+        directories:
+          - path: "apps/*"
+
+    # Matrix generator for multi-env deployments
+    - matrix:
+        generators:
+          - list:
+              elements:
+                - environment: dev
+                  namespace: "{{ .TenantName }}-dev"
+                - environment: staging
+                  namespace: "{{ .TenantName }}-staging"
+                - environment: prod
+                  namespace: "{{ .TenantName }}-prod"
+          - git:
+              repoURL: "{{ .RepoURL }}"
+              revision: "{{ .Branch }}"
+              directories:
+                - path: "apps/*"
+
+  template:
+    metadata:
+      name: "{{ .TenantName }}-{{`{{path.basename}}`}}-{{`{{environment}}`}}"
+      labels:
+        app.kubernetes.io/name: multi-tenant-platform
+        platform.devsecops.io/tenant: "{{ .TenantName }}"
+        platform.devsecops.io/environment: "{{`{{environment}}`}}"
+    spec:
+      project: "{{ .TenantName }}"
+      source:
+        repoURL: "{{ .RepoURL }}"
+        targetRevision: "{{ .Branch }}"
+        path: "{{`{{path}}`}}"
+        helm:
+          valueFiles:
+            - values.yaml
+            - "values-{{`{{environment}}`}}.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "{{`{{namespace}}`}}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true

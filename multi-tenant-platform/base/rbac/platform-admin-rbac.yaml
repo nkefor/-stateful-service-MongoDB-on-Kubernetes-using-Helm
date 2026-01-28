@@ -1,0 +1,167 @@
+# Platform Admin RBAC
+# Full cluster-wide access for platform administrators
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platform-admin
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+    rbac.platform.devsecops.io/role: platform-admin
+rules:
+  # Full access to all resources
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs: ["*"]
+  # Non-resource URLs
+  - nonResourceURLs: ["*"]
+    verbs: ["*"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-admin-binding
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platform-admin
+subjects:
+  - kind: Group
+    name: platform-admins
+    apiGroup: rbac.authorization.k8s.io
+---
+# Platform Operator Role - Can manage tenants but not cluster-level resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platform-operator
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+    rbac.platform.devsecops.io/role: platform-operator
+rules:
+  # Tenant management
+  - apiGroups: ["platform.devsecops.io"]
+    resources: ["tenants", "tenants/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Capsule tenant management
+  - apiGroups: ["capsule.clastix.io"]
+    resources: ["tenants", "tenants/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Namespace management
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # View resource quotas and limit ranges
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Network policies
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RBAC management for tenants
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # View cluster roles (read-only)
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  # Kyverno policies
+  - apiGroups: ["kyverno.io"]
+    resources: ["policies", "clusterpolicies"]
+    verbs: ["get", "list", "watch"]
+  # ArgoCD projects
+  - apiGroups: ["argoproj.io"]
+    resources: ["appprojects", "applications"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # View pods, services, deployments for debugging
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["get", "list", "watch"]
+  # Events for debugging
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-operator-binding
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platform-operator
+subjects:
+  - kind: Group
+    name: platform-operators
+    apiGroup: rbac.authorization.k8s.io
+---
+# Platform Viewer - Read-only access to platform resources
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: platform-viewer
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+    rbac.platform.devsecops.io/role: platform-viewer
+rules:
+  # View tenants
+  - apiGroups: ["platform.devsecops.io"]
+    resources: ["tenants", "tenants/status"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["capsule.clastix.io"]
+    resources: ["tenants", "tenants/status"]
+    verbs: ["get", "list", "watch"]
+  # View namespaces
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list", "watch"]
+  # View quotas
+  - apiGroups: [""]
+    resources: ["resourcequotas", "limitranges"]
+    verbs: ["get", "list", "watch"]
+  # View network policies
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["get", "list", "watch"]
+  # View RBAC
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
+    verbs: ["get", "list", "watch"]
+  # View policies
+  - apiGroups: ["kyverno.io"]
+    resources: ["policies", "clusterpolicies", "policyreports", "clusterpolicyreports"]
+    verbs: ["get", "list", "watch"]
+  # View ArgoCD
+  - apiGroups: ["argoproj.io"]
+    resources: ["appprojects", "applications"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: platform-viewer-binding
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: platform-viewer
+subjects:
+  - kind: Group
+    name: platform-viewers
+    apiGroup: rbac.authorization.k8s.io

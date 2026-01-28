@@ -1,0 +1,207 @@
+# Capsule Tenant Template
+# This template is used by the tenant controller to create Capsule tenants
+# Capsule provides namespace isolation, RBAC, and resource quotas at the tenant level
+---
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: "{{ .TenantName }}"
+  labels:
+    platform.devsecops.io/tenant: "{{ .TenantName }}"
+    platform.devsecops.io/tier: "{{ .Tier }}"
+    platform.devsecops.io/managed-by: platform-controller
+  annotations:
+    platform.devsecops.io/owner-email: "{{ .OwnerEmail }}"
+    platform.devsecops.io/cost-center: "{{ .CostCenter }}"
+spec:
+  # Tenant owners with full access to tenant namespaces
+  owners:
+    - name: "{{ .TenantName }}-admins"
+      kind: Group
+      clusterRoles:
+        - admin
+        - capsule-namespace-deleter
+    - name: "{{ .OwnerEmail }}"
+      kind: User
+      clusterRoles:
+        - admin
+
+  # Additional role bindings for tenant developers
+  additionalRoleBindings:
+    - clusterRoleName: edit
+      subjects:
+        - name: "{{ .TenantName }}-developers"
+          kind: Group
+    - clusterRoleName: view
+      subjects:
+        - name: "{{ .TenantName }}-viewers"
+          kind: Group
+
+  # Namespace quota based on tier
+  namespaceOptions:
+    quota: {{ .MaxNamespaces }}
+    additionalMetadata:
+      labels:
+        platform.devsecops.io/tenant: "{{ .TenantName }}"
+        platform.devsecops.io/tier: "{{ .Tier }}"
+      annotations:
+        scheduler.alpha.kubernetes.io/defaultTolerations: "[]"
+
+  # Node selection for tenant workloads (optional dedicated nodes)
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # Resource quotas applied to each namespace
+  resourceQuotas:
+    scope: Tenant
+    items:
+      - hard:
+          requests.cpu: "{{ .MaxCPU }}"
+          requests.memory: "{{ .MaxMemory }}"
+          limits.cpu: "{{ .MaxCPULimit }}"
+          limits.memory: "{{ .MaxMemoryLimit }}"
+          persistentvolumeclaims: "{{ .MaxPVCs }}"
+          requests.storage: "{{ .MaxStorage }}"
+          pods: "{{ .MaxPods }}"
+          services: "{{ .MaxServices }}"
+          secrets: "{{ .MaxSecrets }}"
+          configmaps: "{{ .MaxConfigMaps }}"
+          services.loadbalancers: "{{ .MaxLoadBalancers }}"
+          services.nodeports: "{{ .MaxNodePorts }}"
+
+  # Limit ranges for default resource constraints
+  limitRanges:
+    items:
+      - limits:
+          # Default container limits
+          - type: Container
+            default:
+              cpu: "500m"
+              memory: "512Mi"
+            defaultRequest:
+              cpu: "100m"
+              memory: "128Mi"
+            max:
+              cpu: "{{ .ContainerMaxCPU }}"
+              memory: "{{ .ContainerMaxMemory }}"
+            min:
+              cpu: "10m"
+              memory: "16Mi"
+          # Pod-level limits
+          - type: Pod
+            max:
+              cpu: "{{ .PodMaxCPU }}"
+              memory: "{{ .PodMaxMemory }}"
+          # PVC limits
+          - type: PersistentVolumeClaim
+            max:
+              storage: "{{ .PVCMaxStorage }}"
+            min:
+              storage: "1Gi"
+
+  # Network policies - deny cross-tenant by default
+  networkPolicies:
+    items:
+      # Default deny all ingress from other tenants
+      - policyTypes:
+          - Ingress
+          - Egress
+        podSelector: {}
+        ingress:
+          # Allow from same namespace
+          - from:
+              - podSelector: {}
+          # Allow from same tenant (other namespaces)
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    platform.devsecops.io/tenant: "{{ .TenantName }}"
+          # Allow from ingress controller
+          - from:
+              - namespaceSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: ingress-nginx
+        egress:
+          # Allow DNS
+          - to:
+              - namespaceSelector:
+                  matchLabels:
+                    kubernetes.io/metadata.name: kube-system
+            ports:
+              - protocol: UDP
+                port: 53
+              - protocol: TCP
+                port: 53
+          # Allow to same tenant
+          - to:
+              - namespaceSelector:
+                  matchLabels:
+                    platform.devsecops.io/tenant: "{{ .TenantName }}"
+          # Allow external HTTPS
+          - to:
+              - ipBlock:
+                  cidr: 0.0.0.0/0
+                  except:
+                    - 10.0.0.0/8
+                    - 172.16.0.0/12
+                    - 192.168.0.0/16
+            ports:
+              - protocol: TCP
+                port: 443
+
+  # Allowed container registries
+  containerRegistries:
+    allowed:
+      {{- range .AllowedRegistries }}
+      - "{{ . }}"
+      {{- end }}
+    allowedRegex: "^{{ .TenantName }}-.*"
+
+  # Storage classes allowed for tenant
+  storageClasses:
+    allowed:
+      - standard
+      - premium-rwo
+      - premium-rwx
+    allowedRegex: "^{{ .TenantName }}-.*"
+
+  # Ingress classes allowed
+  ingressOptions:
+    allowedClasses:
+      allowed:
+        - nginx
+        - traefik
+    allowedHostnames:
+      allowedRegex: "^.*\\.{{ .TenantName }}\\.{{ .Domain }}$"
+
+  # Service options
+  serviceOptions:
+    allowedServices:
+      externalName: false
+      loadBalancer: {{ .AllowLoadBalancer }}
+      nodePort: {{ .AllowNodePort }}
+    externalServiceIPs:
+      allowed: []
+
+  # Image pull policies
+  imagePullPolicies:
+    - Always
+    - IfNotPresent
+
+  # Priority classes
+  priorityClasses:
+    allowed:
+      - tenant-low
+      - tenant-medium
+      - tenant-high
+    allowedRegex: "^{{ .TenantName }}-.*"
+
+  # Runtime classes for security
+  runtimeClasses:
+    allowed:
+      - gvisor
+      - kata
+    allowedRegex: ""
+
+  # Prevent privilege escalation
+  preventDeletion: false

@@ -1,0 +1,227 @@
+# ArgoCD Helm Values for Multi-Tenant Platform
+# Configures ArgoCD with security hardening and multi-tenant support
+---
+# Global settings
+global:
+  image:
+    repository: quay.io/argoproj/argocd
+    tag: v2.9.3
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    fsGroup: 999
+
+# Server configuration
+server:
+  replicas: 2
+
+  # Enable RBAC
+  rbacConfig:
+    policy.default: role:readonly
+    policy.csv: |
+      # Platform admins have full access
+      g, platform-admins, role:admin
+
+      # Platform operators can manage projects and apps
+      p, role:platform-operator, applications, *, */*, allow
+      p, role:platform-operator, projects, *, *, allow
+      p, role:platform-operator, clusters, get, *, allow
+      p, role:platform-operator, repositories, *, *, allow
+      g, platform-operators, role:platform-operator
+
+      # Tenant admins can manage their own project's apps
+      p, role:tenant-admin, applications, *, {{ .TenantProject }}/*, allow
+      p, role:tenant-admin, projects, get, {{ .TenantProject }}, allow
+      p, role:tenant-admin, repositories, get, *, allow
+
+      # Tenant developers can sync and view
+      p, role:tenant-developer, applications, get, {{ .TenantProject }}/*, allow
+      p, role:tenant-developer, applications, sync, {{ .TenantProject }}/*, allow
+      p, role:tenant-developer, projects, get, {{ .TenantProject }}, allow
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - argocd.platform.example.com
+    tls:
+      - secretName: argocd-server-tls
+        hosts:
+          - argocd.platform.example.com
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+# Controller configuration
+controller:
+  replicas: 1
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 250m
+      memory: 512Mi
+
+  # Metrics for monitoring
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      namespace: observability
+
+# Repo server configuration
+repoServer:
+  replicas: 2
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+
+  # Security context
+  containerSecurityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+
+# Application Set controller
+applicationSet:
+  enabled: true
+  replicas: 1
+
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 50m
+      memory: 128Mi
+
+# Notifications controller
+notifications:
+  enabled: true
+
+  # Configure notification channels
+  notifiers:
+    service.slack: |
+      token: $slack-token
+    service.webhook.platform: |
+      url: https://platform.example.com/webhooks/argocd
+      headers:
+        - name: Authorization
+          value: Bearer $webhook-token
+
+  # Notification templates
+  templates:
+    template.app-deployed: |
+      message: |
+        Application {{.app.metadata.name}} is now running new version.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name }}",
+            "color": "good",
+            "fields": [
+              {"title": "Sync Status", "value": "{{.app.status.sync.status}}", "short": true},
+              {"title": "Repository", "value": "{{.app.spec.source.repoURL}}", "short": true}
+            ]
+          }]
+    template.app-sync-failed: |
+      message: |
+        Application {{.app.metadata.name}} sync has failed.
+      slack:
+        attachments: |
+          [{
+            "title": "{{ .app.metadata.name }}",
+            "color": "danger",
+            "fields": [
+              {"title": "Sync Status", "value": "{{.app.status.sync.status}}", "short": true},
+              {"title": "Error", "value": "{{.app.status.conditions | first | default (dict) | get \"message\" \"Unknown\"}}", "short": false}
+            ]
+          }]
+
+  # Triggers
+  triggers:
+    trigger.on-deployed: |
+      - when: app.status.operationState.phase in ['Succeeded'] and app.status.health.status == 'Healthy'
+        send: [app-deployed]
+    trigger.on-sync-failed: |
+      - when: app.status.operationState.phase in ['Error', 'Failed']
+        send: [app-sync-failed]
+
+# Redis HA for production
+redis-ha:
+  enabled: true
+  haproxy:
+    enabled: true
+
+# Dex for SSO (optional)
+dex:
+  enabled: false
+
+# Config
+configs:
+  # Known hosts for Git
+  ssh:
+    knownHosts: |
+      github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+      gitlab.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAfuCHKVTjquxvt6CM6tdG4SLp1Btn/nOeHHE5UOzRdf
+      bitbucket.org ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIazEu89wgQZ4bqs3d63QSMzYVa0MuJ2e2gKTKqu+UUO
+
+  # Repository credentials
+  credentialTemplates:
+    github-https:
+      url: https://github.com
+      password: ""
+      username: ""
+    gitlab-https:
+      url: https://gitlab.com
+      password: ""
+      username: ""
+
+  # Cluster credentials
+  clusterCredentials: []
+
+  # Resource customizations
+  resourceCustomizations:
+    health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs

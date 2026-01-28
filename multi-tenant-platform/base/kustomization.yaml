@@ -1,0 +1,38 @@
+# Kustomization for Multi-Tenant Platform Base
+# Aggregates all platform base resources
+---
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: multi-tenant-platform-base
+
+namespace: platform-system
+
+labels:
+  - includeSelectors: true
+    pairs:
+      app.kubernetes.io/name: multi-tenant-platform
+      app.kubernetes.io/part-of: devsecops-platform
+
+resources:
+  # Platform namespaces
+  - platform-namespace.yaml
+
+  # Custom Resource Definition for Tenants
+  - tenant-crd.yaml
+
+  # Tier definitions
+  - tier-definitions.yaml
+
+  # RBAC
+  - rbac/platform-admin-rbac.yaml
+
+  # Network Policies
+  - network-policies/platform-policies.yaml
+
+commonLabels:
+  platform.devsecops.io/managed-by: platform-controller
+
+commonAnnotations:
+  platform.devsecops.io/version: "1.0.0"

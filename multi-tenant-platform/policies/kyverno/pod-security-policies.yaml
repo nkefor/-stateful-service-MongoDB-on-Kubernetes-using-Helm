@@ -1,0 +1,357 @@
+# Kyverno Pod Security Policies
+# Enforces security best practices for all tenant workloads
+---
+# Disallow privileged containers
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privileged-containers
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow Privileged Containers
+    policies.kyverno.io/description: >-
+      Privileged mode disables most security mechanisms and must not be allowed.
+      This policy ensures that the `privileged` field is undefined or set to false.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: privileged-containers
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Privileged mode is disallowed. The field spec.containers[*].securityContext.privileged must be undefined or set to false."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  privileged: "false"
+            initContainers:
+              - securityContext:
+                  privileged: "false"
+            ephemeralContainers:
+              - securityContext:
+                  privileged: "false"
+---
+# Disallow running as root
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-run-as-non-root
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Require Run As Non-Root
+    policies.kyverno.io/description: >-
+      Containers must be required to run as non-root users. This policy ensures
+      that either the `runAsNonRoot` field is set to true, or the `runAsUser`
+      field is set to a non-zero value.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: run-as-non-root
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Running as root is not allowed. Either set spec.securityContext.runAsNonRoot to true, or set spec.containers[*].securityContext.runAsUser to a non-zero value."
+        anyPattern:
+          - spec:
+              securityContext:
+                runAsNonRoot: true
+          - spec:
+              containers:
+                - securityContext:
+                    runAsUser: ">0"
+---
+# Disallow privilege escalation
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-privilege-escalation
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow Privilege Escalation
+    policies.kyverno.io/description: >-
+      Privilege escalation allows a process to gain more permissions than its parent,
+      which can be used to escape containers. This policy ensures that the
+      `allowPrivilegeEscalation` field is set to `false`.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: privilege-escalation
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Privilege escalation is disallowed. Set spec.containers[*].securityContext.allowPrivilegeEscalation to false."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+            initContainers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+---
+# Require read-only root filesystem
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-read-only-root-filesystem
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Require Read-Only Root Filesystem
+    policies.kyverno.io/description: >-
+      Containers should use a read-only root filesystem to prevent modifications
+      to the container filesystem. This policy validates that containers define
+      `readOnlyRootFilesystem: true`.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: read-only-root-filesystem
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Containers should use a read-only root filesystem. Set spec.containers[*].securityContext.readOnlyRootFilesystem to true."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true
+---
+# Restrict capabilities
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-capabilities
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow Capabilities
+    policies.kyverno.io/description: >-
+      Adding capabilities beyond those listed in the policy must be disallowed.
+      This policy ensures that only a minimal set of capabilities may be added.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: adding-capabilities
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Adding capabilities beyond NET_BIND_SERVICE is not allowed."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.containers[].securityContext.capabilities.add[] }}"
+                operator: AnyNotIn
+                value:
+                  - NET_BIND_SERVICE
+                  - ""
+---
+# Require drop all capabilities
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-drop-all-capabilities
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Restricted)
+    policies.kyverno.io/severity: medium
+  annotations:
+    policies.kyverno.io/title: Require Drop All Capabilities
+    policies.kyverno.io/description: >-
+      Containers should drop all capabilities and only add back those which are required.
+      This policy ensures that all containers have `drop: ["ALL"]` defined.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-drop-all
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Containers must drop ALL capabilities. Set spec.containers[*].securityContext.capabilities.drop to include 'ALL'."
+        pattern:
+          spec:
+            containers:
+              - securityContext:
+                  capabilities:
+                    drop:
+                      - "ALL"
+---
+# Disallow host namespaces
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-namespaces
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow Host Namespaces
+    policies.kyverno.io/description: >-
+      Host namespaces (PID, IPC, Network) must not be used. This policy ensures
+      that `hostPID`, `hostIPC`, and `hostNetwork` are not set to true.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-namespaces
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Sharing the host namespaces is disallowed. The fields spec.hostNetwork, spec.hostPID, and spec.hostIPC must be undefined or set to false."
+        pattern:
+          spec:
+            =(hostPID): "false"
+            =(hostIPC): "false"
+            =(hostNetwork): "false"
+---
+# Disallow host ports
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-ports
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow Host Ports
+    policies.kyverno.io/description: >-
+      Access to host ports must not be allowed or restricted to a known list.
+      This policy ensures that the `hostPort` field is undefined or set to 0.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-ports
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "Host ports are disallowed. The fields spec.containers[*].ports[*].hostPort and spec.initContainers[*].ports[*].hostPort must be undefined or set to 0."
+        pattern:
+          spec:
+            containers:
+              - ports:
+                  - =(hostPort): "0"
+            =(initContainers):
+              - ports:
+                  - =(hostPort): "0"
+---
+# Disallow host path volumes
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-host-path
+  labels:
+    app.kubernetes.io/name: multi-tenant-platform
+    app.kubernetes.io/component: policy
+    policies.kyverno.io/category: Pod Security Standards (Baseline)
+    policies.kyverno.io/severity: high
+  annotations:
+    policies.kyverno.io/title: Disallow HostPath Volumes
+    policies.kyverno.io/description: >-
+      HostPath volumes let Pods access arbitrary paths on the host. This policy
+      ensures that no Pods may use hostPath volumes.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: host-path
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchExpressions:
+                  - key: platform.devsecops.io/tenant
+                    operator: Exists
+      validate:
+        message: "HostPath volumes are disallowed. The field spec.volumes[*].hostPath must not be set."
+        pattern:
+          spec:
+            =(volumes):
+              - X(hostPath): "null"
