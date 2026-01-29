@@ -1,0 +1,118 @@
+---
+# Azure Provider Installation
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure
+  annotations:
+    description: "Azure provider for Crossplane to manage Azure resources"
+spec:
+  package: xpkg.upbound.io/upbound/provider-family-azure:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config
+
+---
+# Azure Provider Controller Configuration
+apiVersion: pkg.crossplane.io/v1alpha1
+kind: ControllerConfig
+metadata:
+  name: azure-controller-config
+  annotations:
+    description: "Controller configuration for Azure provider with Workload Identity"
+spec:
+  podSecurityContext:
+    fsGroup: 2000
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+  resources:
+    limits:
+      cpu: "2"
+      memory: 4Gi
+    requests:
+      cpu: "500m"
+      memory: 1Gi
+
+  serviceAccountName: crossplane-provider-azure
+
+  args:
+    - --debug
+    - --max-reconcile-rate=50
+    - --poll=1m
+
+---
+# Azure Provider Configuration (using Azure Workload Identity)
+apiVersion: azure.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: azure-provider-config
+spec:
+  credentials:
+    source: OIDCTokenFile
+  subscriptionID: YOUR_AZURE_SUBSCRIPTION_ID
+  tenantID: YOUR_AZURE_TENANT_ID
+  clientID: YOUR_AZURE_CLIENT_ID
+
+---
+# ServiceAccount for Azure Provider (Azure Workload Identity)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crossplane-provider-azure
+  namespace: crossplane-system
+  annotations:
+    azure.workload.identity/client-id: YOUR_AZURE_CLIENT_ID
+  labels:
+    azure.workload.identity/use: "true"
+
+---
+# Individual Azure Service Providers
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-compute
+spec:
+  package: xpkg.upbound.io/upbound/provider-azure-compute:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-containerservice
+spec:
+  package: xpkg.upbound.io/upbound/provider-azure-containerservice:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-network
+spec:
+  package: xpkg.upbound.io/upbound/provider-azure-network:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-dbforpostgresql
+spec:
+  package: xpkg.upbound.io/upbound/provider-azure-dbforpostgresql:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-azure-storage
+spec:
+  package: xpkg.upbound.io/upbound/provider-azure-storage:v1.0.0
+  controllerConfigRef:
+    name: azure-controller-config

@@ -1,0 +1,27 @@
+---
+# Kustomization for the management cluster
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: flux-system
+
+resources:
+  # Flux system components
+  - flux-system/gotk-sync.yaml
+
+  # Git repositories
+  - sources/
+
+  # Infrastructure components for management cluster
+  - infrastructure.yaml
+
+  # Crossplane configurations
+  - crossplane.yaml
+
+  # Fleet management
+  - fleet/
+
+  # Observability
+  - observability.yaml
+
+  # Notifications
+  - notifications.yaml

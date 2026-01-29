@@ -1,0 +1,212 @@
+---
+# Flux Notification Configuration
+# Handles alerts and webhooks for GitOps events
+
+# Slack Provider for notifications
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Provider
+metadata:
+  name: slack-notifications
+  namespace: flux-system
+spec:
+  type: slack
+  channel: "#gitops-alerts"
+  secretRef:
+    name: slack-webhook-url
+
+---
+# GitHub Provider for commit statuses
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Provider
+metadata:
+  name: github-status
+  namespace: flux-system
+spec:
+  type: github
+  address: https://github.com/YOUR_ORG/gitops-control-plane
+  secretRef:
+    name: github-token
+
+---
+# PagerDuty Provider for critical alerts
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Provider
+metadata:
+  name: pagerduty-critical
+  namespace: flux-system
+spec:
+  type: pagerduty
+  secretRef:
+    name: pagerduty-token
+
+---
+# Alert for all GitOps events (info level)
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Alert
+metadata:
+  name: gitops-info
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack-notifications
+  eventSeverity: info
+  eventSources:
+    - kind: GitRepository
+      name: '*'
+    - kind: Kustomization
+      name: '*'
+    - kind: HelmRelease
+      name: '*'
+  summary: "GitOps sync event"
+
+---
+# Alert for errors and failures
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Alert
+metadata:
+  name: gitops-errors
+  namespace: flux-system
+spec:
+  providerRef:
+    name: slack-notifications
+  eventSeverity: error
+  eventSources:
+    - kind: GitRepository
+      name: '*'
+    - kind: Kustomization
+      name: '*'
+    - kind: HelmRelease
+      name: '*'
+  summary: "GitOps error alert"
+
+---
+# Critical alerts go to PagerDuty
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Alert
+metadata:
+  name: production-critical
+  namespace: flux-system
+spec:
+  providerRef:
+    name: pagerduty-critical
+  eventSeverity: error
+  eventSources:
+    - kind: Kustomization
+      name: 'prod-*'
+    - kind: HelmRelease
+      name: '*'
+      namespace: production
+  summary: "Production deployment failure"
+
+---
+# GitHub commit status updates
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Alert
+metadata:
+  name: github-commit-status
+  namespace: flux-system
+spec:
+  providerRef:
+    name: github-status
+  eventSeverity: info
+  eventSources:
+    - kind: Kustomization
+      name: '*'
+    - kind: HelmRelease
+      name: '*'
+  summary: "GitOps deployment status"
+
+---
+# Receiver for GitHub webhooks (push events)
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Receiver
+metadata:
+  name: github-webhook
+  namespace: flux-system
+spec:
+  type: github
+  events:
+    - "ping"
+    - "push"
+  secretRef:
+    name: github-webhook-token
+  resources:
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      name: flux-system
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      name: platform-config
+    - apiVersion: source.toolkit.fluxcd.io/v1
+      kind: GitRepository
+      name: applications
+
+---
+# Receiver for generic webhooks (CI/CD systems)
+apiVersion: notification.toolkit.fluxcd.io/v1beta2
+kind: Receiver
+metadata:
+  name: generic-webhook
+  namespace: flux-system
+spec:
+  type: generic
+  secretRef:
+    name: generic-webhook-token
+  resources:
+    - apiVersion: image.toolkit.fluxcd.io/v1beta2
+      kind: ImageRepository
+      name: '*'
+    - apiVersion: source.toolkit.fluxcd.io/v1beta2
+      kind: HelmRepository
+      name: '*'
+
+---
+# Webhook secrets (templates - populate with actual values)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-url
+  namespace: flux-system
+type: Opaque
+stringData:
+  address: "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: "ghp_your_github_token"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pagerduty-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: "your_pagerduty_routing_key"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-webhook-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: "your_github_webhook_secret"
+
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: generic-webhook-token
+  namespace: flux-system
+type: Opaque
+stringData:
+  token: "your_generic_webhook_token"

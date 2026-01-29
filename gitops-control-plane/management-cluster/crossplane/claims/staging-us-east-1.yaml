@@ -1,0 +1,78 @@
+---
+# Staging Cluster Claim - US East 1
+apiVersion: platform.gitops.io/v1alpha1
+kind: KubernetesCluster
+metadata:
+  name: staging-us-east-1
+  namespace: fleet-clusters
+  labels:
+    environment: staging
+    region: us-east-1
+    team: platform
+    cost-center: engineering
+  annotations:
+    description: "Staging cluster for pre-production testing"
+    owner: platform-team@company.com
+spec:
+  cloudProvider: aws
+  region: us-east-1
+  environment: staging
+
+  kubernetes:
+    version: "1.28"
+    enableLogging: true
+    enableSecretEncryption: true
+    apiServerAccess: public-and-private
+
+  nodeGroups:
+    - name: system
+      instanceType: m6i.large
+      minSize: 3
+      maxSize: 5
+      desiredSize: 3
+      diskSizeGb: 50
+      labels:
+        node-type: system
+        environment: staging
+      taints:
+        - key: CriticalAddonsOnly
+          value: "true"
+          effect: PreferNoSchedule
+
+    - name: applications
+      instanceType: m6i.xlarge
+      minSize: 3
+      maxSize: 30
+      desiredSize: 5
+      diskSizeGb: 100
+      labels:
+        node-type: application
+        environment: staging
+
+  networking:
+    vpcCidr: "10.20.0.0/16"
+    podCidr: "10.244.0.0/16"
+    serviceCidr: "10.96.0.0/16"
+    networkPolicy: calico
+
+  addons:
+    - cluster-autoscaler
+    - metrics-server
+    - aws-ebs-csi-driver
+    - aws-load-balancer-controller
+    - external-dns
+    - cert-manager
+
+  tags:
+    Environment: staging
+    Project: gitops-control-plane
+    ManagedBy: crossplane
+    CostCenter: engineering
+    Team: platform
+
+  maintenance:
+    autoUpgrade: false
+    maintenanceWindow:
+      dayOfWeek: sunday
+      startTime: "02:00"
+      durationHours: 4

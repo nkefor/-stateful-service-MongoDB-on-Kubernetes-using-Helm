@@ -1,0 +1,64 @@
+---
+# Platform Configuration Repository
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: platform-config
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/YOUR_ORG/platform-config
+  ref:
+    branch: main
+  secretRef:
+    name: github-credentials
+  ignore: |
+    # Ignore non-essential files
+    README.md
+    docs/
+    .github/
+
+---
+# Applications Repository
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: applications
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/YOUR_ORG/applications
+  ref:
+    branch: main
+  secretRef:
+    name: github-credentials
+
+---
+# Policies Repository
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: policies
+  namespace: flux-system
+spec:
+  interval: 5m
+  url: https://github.com/YOUR_ORG/policies
+  ref:
+    branch: main
+  secretRef:
+    name: github-credentials
+
+---
+# Infrastructure Repository (Crossplane claims)
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/YOUR_ORG/gitops-control-plane
+  ref:
+    branch: main
+  secretRef:
+    name: github-credentials

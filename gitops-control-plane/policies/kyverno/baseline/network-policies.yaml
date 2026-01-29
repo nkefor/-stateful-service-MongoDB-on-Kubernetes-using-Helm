@@ -1,0 +1,209 @@
+---
+# Network Policy Templates and Enforcement
+# These policies ensure proper network segmentation
+
+# Generate Default Deny Network Policy
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-default-deny-networkpolicy
+  annotations:
+    policies.kyverno.io/title: Generate Default Deny NetworkPolicy
+    policies.kyverno.io/category: Network Security
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Namespace, NetworkPolicy
+    policies.kyverno.io/description: >-
+      Automatically generate a default-deny network policy for new namespaces.
+spec:
+  rules:
+    - name: default-deny-ingress
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - default
+                - kyverno
+                - flux-system
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-ingress
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+
+    - name: default-deny-egress
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - default
+                - kyverno
+                - flux-system
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: default-deny-egress
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Egress
+            egress:
+              # Allow DNS
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                ports:
+                  - port: 53
+                    protocol: UDP
+                  - port: 53
+                    protocol: TCP
+
+---
+# Allow Ingress from Ingress Controller
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-allow-ingress-controller
+  annotations:
+    policies.kyverno.io/title: Generate Allow Ingress Controller NetworkPolicy
+    policies.kyverno.io/category: Network Security
+    policies.kyverno.io/severity: low
+spec:
+  rules:
+    - name: allow-ingress-controller
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  allow-ingress: "true"
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: allow-from-ingress-controller
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector: {}
+            policyTypes:
+              - Ingress
+            ingress:
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: ingress-nginx
+                    podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: ingress-nginx
+
+---
+# Allow Prometheus Scraping
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-allow-prometheus
+  annotations:
+    policies.kyverno.io/title: Generate Allow Prometheus NetworkPolicy
+    policies.kyverno.io/category: Network Security
+    policies.kyverno.io/severity: low
+spec:
+  rules:
+    - name: allow-prometheus
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  prometheus-scrape: "true"
+      generate:
+        apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        name: allow-prometheus-scrape
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            podSelector:
+              matchLabels:
+                prometheus.io/scrape: "true"
+            policyTypes:
+              - Ingress
+            ingress:
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: monitoring
+                    podSelector:
+                      matchLabels:
+                        app.kubernetes.io/name: prometheus
+                ports:
+                  - port: metrics
+                    protocol: TCP
+
+---
+# Require Network Policy for Production
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-networkpolicy-production
+  annotations:
+    policies.kyverno.io/title: Require NetworkPolicy for Production
+    policies.kyverno.io/category: Network Security
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Deployment
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-networkpolicy-exists
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      preconditions:
+        all:
+          - key: "{{request.operation}}"
+            operator: In
+            value: ["CREATE", "UPDATE"]
+      validate:
+        message: "Production deployments require an associated NetworkPolicy."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.namespace }}"
+                operator: AnyNotIn
+                value: "{{ networkpolicies.list('', '').items[?metadata.namespace == '{{request.object.metadata.namespace}}'].metadata.namespace }}"

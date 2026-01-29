@@ -1,0 +1,123 @@
+---
+# AWS Provider Installation
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws
+  annotations:
+    description: "AWS provider for Crossplane to manage AWS resources"
+spec:
+  package: xpkg.upbound.io/upbound/provider-family-aws:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config
+
+---
+# AWS Provider Controller Configuration
+apiVersion: pkg.crossplane.io/v1alpha1
+kind: ControllerConfig
+metadata:
+  name: aws-controller-config
+  annotations:
+    description: "Controller configuration for AWS provider with IRSA"
+spec:
+  # Pod template spec
+  podSecurityContext:
+    fsGroup: 2000
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+  # Resource allocation for production workloads
+  resources:
+    limits:
+      cpu: "2"
+      memory: 4Gi
+    requests:
+      cpu: "500m"
+      memory: 1Gi
+
+  # AWS IRSA configuration
+  serviceAccountName: crossplane-provider-aws
+
+  # Performance tuning arguments
+  args:
+    - --debug
+    - --max-reconcile-rate=50
+    - --poll=1m
+    - --sync=1h
+    - --enable-management-policies
+
+---
+# AWS Provider Configuration (using IRSA)
+apiVersion: aws.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: aws-provider-config
+spec:
+  credentials:
+    source: IRSA
+  # Optional: Assume role for cross-account management
+  # assumeRoleChain:
+  #   - roleARN: arn:aws:iam::ACCOUNT_ID:role/CrossplaneProviderRole
+
+---
+# ServiceAccount for AWS Provider (IRSA)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: crossplane-provider-aws
+  namespace: crossplane-system
+  annotations:
+    # Replace with your AWS account ID and role
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/CrossplaneAWSProviderRole
+
+---
+# Individual AWS Service Providers
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-ec2
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-ec2:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-eks
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-eks:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-iam
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-iam:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-rds
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-rds:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config
+
+---
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: provider-aws-s3
+spec:
+  package: xpkg.upbound.io/upbound/provider-aws-s3:v1.1.0
+  controllerConfigRef:
+    name: aws-controller-config

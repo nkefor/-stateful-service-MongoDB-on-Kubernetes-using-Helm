@@ -1,0 +1,198 @@
+# Platform Stack Default Values
+# This chart deploys core platform components to workload clusters
+
+# Global settings
+global:
+  # Cloud provider (aws, gcp, azure)
+  cloudProvider: aws
+  # Environment (development, staging, production)
+  environment: development
+  # Cluster name
+  clusterName: ""
+  # Domain for ingress
+  domain: ""
+
+# Ingress NGINX Controller
+ingress-nginx:
+  enabled: true
+  controller:
+    replicaCount: 2
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    metrics:
+      enabled: true
+      serviceMonitor:
+        enabled: true
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 1
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 80
+    service:
+      annotations: {}
+      # AWS NLB annotations (uncomment for AWS)
+      # service.beta.kubernetes.io/aws-load-balancer-type: nlb
+      # service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+
+# Cert Manager
+cert-manager:
+  enabled: true
+  installCRDs: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  prometheus:
+    enabled: true
+    servicemonitor:
+      enabled: true
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+
+# External DNS
+external-dns:
+  enabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  serviceMonitor:
+    enabled: true
+  # Configure based on cloud provider
+  provider: aws
+  # AWS specific settings
+  aws:
+    zoneType: public
+    # region: us-east-1  # Set via global.region
+  # Policy (sync, upsert-only)
+  policy: sync
+  # TXT owner ID
+  txtOwnerId: ""
+  # Domain filters
+  domainFilters: []
+
+# External Secrets Operator
+external-secrets:
+  enabled: true
+  replicaCount: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+  serviceMonitor:
+    enabled: true
+  webhook:
+    replicaCount: 2
+  certController:
+    replicaCount: 2
+
+# Kyverno Policy Engine
+kyverno:
+  enabled: true
+  replicaCount: 3
+  resources:
+    limits:
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 256Mi
+  serviceMonitor:
+    enabled: true
+  # Admission controller configuration
+  admissionController:
+    replicas: 3
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 2
+  # Background controller
+  backgroundController:
+    replicas: 2
+  # Cleanup controller
+  cleanupController:
+    replicas: 2
+  # Reports controller
+  reportsController:
+    replicas: 2
+
+# Linkerd Service Mesh (optional)
+linkerd:
+  enabled: false
+  # Note: Linkerd requires additional setup for mTLS
+
+# Cluster Autoscaler (if not using managed autoscaling)
+cluster-autoscaler:
+  enabled: false
+  cloudProvider: aws
+  autoDiscovery:
+    clusterName: ""
+  extraArgs:
+    skip-nodes-with-local-storage: false
+    expander: least-waste
+    scale-down-enabled: true
+    scale-down-utilization-threshold: 0.5
+
+# Metrics Server
+metrics-server:
+  enabled: true
+  replicas: 2
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+# Vertical Pod Autoscaler (optional)
+vpa:
+  enabled: false
+
+# Network Policies
+networkPolicies:
+  enabled: true
+  # Default deny all ingress
+  defaultDenyIngress: true
+  # Default deny all egress (except DNS)
+  defaultDenyEgress: true
+
+# Resource Quotas
+resourceQuotas:
+  enabled: true
+  # Default quota for namespaces
+  default:
+    requests:
+      cpu: "4"
+      memory: "8Gi"
+    limits:
+      cpu: "8"
+      memory: "16Gi"
+
+# Limit Ranges
+limitRanges:
+  enabled: true
+  default:
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    defaultLimit:
+      cpu: "500m"
+      memory: "512Mi"
