@@ -1,0 +1,255 @@
+---
+# Observability Stack for Management Cluster
+# Provides centralized monitoring and logging across the fleet
+
+# Prometheus Stack (Prometheus, Alertmanager, Grafana)
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: kube-prometheus-stack
+  namespace: flux-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: kube-prometheus-stack
+      version: "55.x"
+      sourceRef:
+        kind: HelmRepository
+        name: prometheus-community
+        namespace: flux-system
+  targetNamespace: monitoring
+  install:
+    createNamespace: true
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    remediation:
+      retries: 3
+  values:
+    # Prometheus Configuration
+    prometheus:
+      prometheusSpec:
+        replicas: 2
+        retention: 30d
+        retentionSize: 50GB
+        resources:
+          requests:
+            cpu: 500m
+            memory: 2Gi
+          limits:
+            cpu: 2
+            memory: 8Gi
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 100Gi
+        # Federation endpoint for multi-cluster metrics
+        additionalScrapeConfigs:
+          - job_name: 'federate-workload-clusters'
+            honor_labels: true
+            metrics_path: '/federate'
+            params:
+              'match[]':
+                - '{job=~".+"}'
+            static_configs:
+              - targets:
+                - 'prometheus-dev-us-east-1.monitoring.svc:9090'
+                - 'prometheus-staging-us-east-1.monitoring.svc:9090'
+                - 'prometheus-prod-us-east-1.monitoring.svc:9090'
+                - 'prometheus-prod-eu-west-1.monitoring.svc:9090'
+
+    # Alertmanager Configuration
+    alertmanager:
+      alertmanagerSpec:
+        replicas: 2
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      config:
+        global:
+          resolve_timeout: 5m
+        route:
+          group_by: ['alertname', 'cluster', 'severity']
+          group_wait: 30s
+          group_interval: 5m
+          repeat_interval: 12h
+          receiver: 'default-receiver'
+          routes:
+            - match:
+                severity: critical
+              receiver: 'pagerduty-critical'
+            - match:
+                severity: warning
+              receiver: 'slack-warnings'
+        receivers:
+          - name: 'default-receiver'
+            slack_configs:
+              - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+                channel: '#alerts'
+          - name: 'pagerduty-critical'
+            pagerduty_configs:
+              - service_key_file: /etc/alertmanager/secrets/pagerduty/key
+          - name: 'slack-warnings'
+            slack_configs:
+              - api_url_file: /etc/alertmanager/secrets/slack-webhook/url
+                channel: '#alerts-warnings'
+
+    # Grafana Configuration
+    grafana:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+      persistence:
+        enabled: true
+        size: 10Gi
+      adminPassword: ""  # Use external secret
+      admin:
+        existingSecret: grafana-admin-credentials
+        userKey: admin-user
+        passwordKey: admin-password
+      dashboardProviders:
+        dashboardproviders.yaml:
+          apiVersion: 1
+          providers:
+            - name: 'fleet-dashboards'
+              orgId: 1
+              folder: 'Fleet'
+              type: file
+              disableDeletion: true
+              editable: false
+              options:
+                path: /var/lib/grafana/dashboards/fleet
+            - name: 'crossplane-dashboards'
+              orgId: 1
+              folder: 'Crossplane'
+              type: file
+              disableDeletion: true
+              editable: false
+              options:
+                path: /var/lib/grafana/dashboards/crossplane
+      sidecar:
+        dashboards:
+          enabled: true
+          searchNamespace: ALL
+
+---
+# Loki Stack for Centralized Logging
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: loki
+  namespace: flux-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: loki
+      version: "5.x"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  targetNamespace: monitoring
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    loki:
+      auth_enabled: false
+      commonConfig:
+        replication_factor: 2
+      storage:
+        type: 's3'
+        s3:
+          endpoint: s3.amazonaws.com
+          region: us-east-1
+          bucketnames: fleet-logs-bucket
+          insecure: false
+    write:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+    read:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+    backend:
+      replicas: 2
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 1Gi
+
+---
+# Promtail for Log Collection
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: promtail
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: loki
+  interval: 30m
+  chart:
+    spec:
+      chart: promtail
+      version: "6.x"
+      sourceRef:
+        kind: HelmRepository
+        name: grafana
+        namespace: flux-system
+  targetNamespace: monitoring
+  install:
+    remediation:
+      retries: 3
+  values:
+    config:
+      clients:
+        - url: http://loki-gateway.monitoring.svc.cluster.local/loki/api/v1/push
+      snippets:
+        pipelineStages:
+          - cri: {}
+          - multiline:
+              firstline: '^\d{4}-\d{2}-\d{2}'
+          - json:
+              expressions:
+                level: level
+                msg: msg
+                namespace: kubernetes.namespace_name
+                pod: kubernetes.pod_name
+          - labels:
+              level:
+              namespace:
+              pod:

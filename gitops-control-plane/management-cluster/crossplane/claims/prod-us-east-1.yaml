@@ -1,0 +1,208 @@
+---
+# Production Cluster Claim - US East 1 (Primary)
+apiVersion: platform.gitops.io/v1alpha1
+kind: KubernetesCluster
+metadata:
+  name: prod-us-east-1
+  namespace: fleet-clusters
+  labels:
+    environment: production
+    region: us-east-1
+    team: platform
+    cost-center: production
+    tier: primary
+    compliance: soc2
+  annotations:
+    description: "Primary production cluster - US East region"
+    owner: sre-team@company.com
+    pagerduty-service: production-kubernetes
+    runbook: https://wiki.company.com/runbooks/prod-us-east-1
+spec:
+  cloudProvider: aws
+  region: us-east-1
+  environment: production
+
+  kubernetes:
+    version: "1.28"
+    enableLogging: true
+    enableSecretEncryption: true
+    apiServerAccess: private  # Production: private API only
+
+  nodeGroups:
+    # System node group - critical platform components
+    - name: system
+      instanceType: m6i.xlarge
+      minSize: 3
+      maxSize: 6
+      desiredSize: 3
+      diskSizeGb: 100
+      labels:
+        node-type: system
+        environment: production
+        criticality: high
+      taints:
+        - key: CriticalAddonsOnly
+          value: "true"
+          effect: NoSchedule
+
+    # Application node group - general workloads
+    - name: applications
+      instanceType: m6i.2xlarge
+      minSize: 10
+      maxSize: 100
+      desiredSize: 20
+      diskSizeGb: 200
+      labels:
+        node-type: application
+        environment: production
+
+    # Memory-optimized for databases and caches
+    - name: memory-optimized
+      instanceType: r6i.2xlarge
+      minSize: 3
+      maxSize: 20
+      desiredSize: 5
+      diskSizeGb: 200
+      labels:
+        node-type: memory-optimized
+        environment: production
+      taints:
+        - key: workload
+          value: memory-intensive
+          effect: NoSchedule
+
+    # Compute-optimized for batch processing
+    - name: compute-optimized
+      instanceType: c6i.2xlarge
+      minSize: 0
+      maxSize: 30
+      desiredSize: 5
+      diskSizeGb: 100
+      labels:
+        node-type: compute-optimized
+        environment: production
+      taints:
+        - key: workload
+          value: compute-intensive
+          effect: NoSchedule
+
+  networking:
+    vpcCidr: "10.100.0.0/16"
+    podCidr: "10.244.0.0/16"
+    serviceCidr: "10.96.0.0/16"
+    networkPolicy: calico
+
+  addons:
+    - cluster-autoscaler
+    - metrics-server
+    - aws-ebs-csi-driver
+    - aws-efs-csi-driver
+    - aws-load-balancer-controller
+    - external-dns
+    - cert-manager
+    - ingress-nginx
+
+  tags:
+    Environment: production
+    Project: gitops-control-plane
+    ManagedBy: crossplane
+    CostCenter: production
+    Team: platform
+    Compliance: soc2
+    DataClassification: confidential
+    BackupPolicy: daily
+
+  maintenance:
+    autoUpgrade: false
+    maintenanceWindow:
+      dayOfWeek: sunday
+      startTime: "04:00"
+      durationHours: 2
+
+---
+# Production Cluster Claim - EU West 1 (Secondary/DR)
+apiVersion: platform.gitops.io/v1alpha1
+kind: KubernetesCluster
+metadata:
+  name: prod-eu-west-1
+  namespace: fleet-clusters
+  labels:
+    environment: production
+    region: eu-west-1
+    team: platform
+    cost-center: production
+    tier: secondary
+    compliance: gdpr
+  annotations:
+    description: "Secondary production cluster - EU region (GDPR)"
+    owner: sre-team@company.com
+spec:
+  cloudProvider: aws
+  region: eu-west-1
+  environment: production
+
+  kubernetes:
+    version: "1.28"
+    enableLogging: true
+    enableSecretEncryption: true
+    apiServerAccess: private
+
+  nodeGroups:
+    - name: system
+      instanceType: m6i.xlarge
+      minSize: 3
+      maxSize: 6
+      desiredSize: 3
+      diskSizeGb: 100
+      labels:
+        node-type: system
+        environment: production
+        region: eu-west-1
+      taints:
+        - key: CriticalAddonsOnly
+          value: "true"
+          effect: NoSchedule
+
+    - name: applications
+      instanceType: m6i.2xlarge
+      minSize: 5
+      maxSize: 50
+      desiredSize: 10
+      diskSizeGb: 200
+      labels:
+        node-type: application
+        environment: production
+        region: eu-west-1
+        data-residency: eu
+
+  networking:
+    vpcCidr: "10.110.0.0/16"
+    podCidr: "10.244.0.0/16"
+    serviceCidr: "10.96.0.0/16"
+    networkPolicy: calico
+
+  addons:
+    - cluster-autoscaler
+    - metrics-server
+    - aws-ebs-csi-driver
+    - aws-load-balancer-controller
+    - external-dns
+    - cert-manager
+    - ingress-nginx
+
+  tags:
+    Environment: production
+    Project: gitops-control-plane
+    ManagedBy: crossplane
+    CostCenter: production
+    Team: platform
+    Compliance: gdpr
+    DataResidency: eu
+    BackupPolicy: daily
+
+  maintenance:
+    autoUpgrade: false
+    maintenanceWindow:
+      dayOfWeek: sunday
+      startTime: "04:00"
+      durationHours: 2

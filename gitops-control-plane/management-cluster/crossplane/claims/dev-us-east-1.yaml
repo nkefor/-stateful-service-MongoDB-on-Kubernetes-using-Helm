@@ -1,0 +1,114 @@
+---
+# Development Cluster Claim - US East 1
+# This claim provisions a development EKS cluster using the GitOps control plane
+apiVersion: platform.gitops.io/v1alpha1
+kind: KubernetesCluster
+metadata:
+  name: dev-us-east-1
+  namespace: fleet-clusters
+  labels:
+    environment: development
+    region: us-east-1
+    team: platform
+    cost-center: engineering
+  annotations:
+    description: "Development cluster for engineering teams"
+    owner: platform-team@company.com
+spec:
+  # Cloud provider and region
+  cloudProvider: aws
+  region: us-east-1
+  environment: development
+
+  # Kubernetes configuration
+  kubernetes:
+    version: "1.28"
+    enableLogging: true
+    enableSecretEncryption: true
+    apiServerAccess: public-and-private
+
+  # Node group configurations
+  nodeGroups:
+    # System workloads (Flux, monitoring, etc.)
+    - name: system
+      instanceType: m6i.large
+      minSize: 2
+      maxSize: 4
+      desiredSize: 2
+      diskSizeGb: 50
+      labels:
+        node-type: system
+        environment: development
+      taints:
+        - key: CriticalAddonsOnly
+          value: "true"
+          effect: PreferNoSchedule
+
+    # Application workloads
+    - name: applications
+      instanceType: m6i.xlarge
+      minSize: 2
+      maxSize: 20
+      desiredSize: 3
+      diskSizeGb: 100
+      labels:
+        node-type: application
+        environment: development
+
+    # Spot instances for cost optimization in dev
+    - name: spot-workloads
+      instanceType: m6i.xlarge
+      minSize: 0
+      maxSize: 10
+      desiredSize: 2
+      diskSizeGb: 100
+      spotInstances: true
+      labels:
+        node-type: spot
+        environment: development
+      taints:
+        - key: spot
+          value: "true"
+          effect: PreferNoSchedule
+
+  # Networking configuration
+  networking:
+    vpcCidr: "10.10.0.0/16"
+    podCidr: "10.244.0.0/16"
+    serviceCidr: "10.96.0.0/16"
+    networkPolicy: calico
+
+  # Add-ons to install
+  addons:
+    - cluster-autoscaler
+    - metrics-server
+    - aws-ebs-csi-driver
+    - aws-load-balancer-controller
+
+  # Resource tags
+  tags:
+    Environment: development
+    Project: gitops-control-plane
+    ManagedBy: crossplane
+    CostCenter: engineering
+    Team: platform
+
+  # Maintenance configuration
+  maintenance:
+    autoUpgrade: false
+    maintenanceWindow:
+      dayOfWeek: saturday
+      startTime: "02:00"
+      durationHours: 4
+
+---
+# Connection secret for accessing the cluster
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dev-us-east-1-connection
+  namespace: flux-system
+  annotations:
+    description: "Connection details for dev-us-east-1 cluster"
+type: Opaque
+# Note: Crossplane will populate this secret with cluster credentials

@@ -1,0 +1,165 @@
+---
+# Resource Quota Policies
+# Automatically apply resource quotas to namespaces
+
+# Generate Resource Quota for Standard Namespaces
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-resourcequota-standard
+  annotations:
+    policies.kyverno.io/title: Generate Standard Resource Quota
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+spec:
+  rules:
+    - name: generate-quota
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  quota-tier: standard
+      generate:
+        apiVersion: v1
+        kind: ResourceQuota
+        name: standard-quota
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            hard:
+              requests.cpu: "4"
+              requests.memory: "8Gi"
+              limits.cpu: "8"
+              limits.memory: "16Gi"
+              persistentvolumeclaims: "10"
+              pods: "50"
+              services: "20"
+              secrets: "50"
+              configmaps: "50"
+
+---
+# Generate Resource Quota for Large Namespaces
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-resourcequota-large
+  annotations:
+    policies.kyverno.io/title: Generate Large Resource Quota
+    policies.kyverno.io/category: Resource Management
+spec:
+  rules:
+    - name: generate-quota
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+              selector:
+                matchLabels:
+                  quota-tier: large
+      generate:
+        apiVersion: v1
+        kind: ResourceQuota
+        name: large-quota
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            hard:
+              requests.cpu: "16"
+              requests.memory: "32Gi"
+              limits.cpu: "32"
+              limits.memory: "64Gi"
+              persistentvolumeclaims: "50"
+              pods: "200"
+              services: "50"
+              secrets: "100"
+              configmaps: "100"
+
+---
+# Generate LimitRange for All Namespaces
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-limitrange
+  annotations:
+    policies.kyverno.io/title: Generate LimitRange
+    policies.kyverno.io/category: Resource Management
+spec:
+  rules:
+    - name: generate-limitrange
+      match:
+        any:
+          - resources:
+              kinds:
+                - Namespace
+      exclude:
+        any:
+          - resources:
+              names:
+                - kube-system
+                - kube-public
+                - kube-node-lease
+                - default
+      generate:
+        apiVersion: v1
+        kind: LimitRange
+        name: default-limits
+        namespace: "{{request.object.metadata.name}}"
+        synchronize: true
+        data:
+          spec:
+            limits:
+              # Default limits for containers
+              - default:
+                  cpu: "500m"
+                  memory: "512Mi"
+                defaultRequest:
+                  cpu: "100m"
+                  memory: "128Mi"
+                max:
+                  cpu: "4"
+                  memory: "8Gi"
+                min:
+                  cpu: "10m"
+                  memory: "32Mi"
+                type: Container
+              # Limits for PVCs
+              - max:
+                  storage: "100Gi"
+                min:
+                  storage: "1Gi"
+                type: PersistentVolumeClaim
+
+---
+# Validate Resource Requests Don't Exceed Limits
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: validate-resource-requests
+  annotations:
+    policies.kyverno.io/title: Validate Resource Requests
+    policies.kyverno.io/category: Resource Management
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: memory-requests-less-than-limits
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      validate:
+        message: "Memory requests must be less than or equal to memory limits."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.spec.containers[].resources.requests.memory || '0' }}"
+                operator: GreaterThan
+                value: "{{ request.object.spec.containers[].resources.limits.memory || '0' }}"

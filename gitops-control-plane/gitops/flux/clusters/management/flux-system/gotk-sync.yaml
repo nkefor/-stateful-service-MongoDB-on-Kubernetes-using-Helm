@@ -1,0 +1,37 @@
+---
+# GitRepository for the main fleet configuration repository
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  url: https://github.com/YOUR_ORG/gitops-control-plane
+  ref:
+    branch: main
+  secretRef:
+    name: flux-system
+  ignore: |
+    # Exclude files not required for cluster reconciliation
+    /*
+    !/gitops/
+    !/policies/
+    !/helm-charts/
+
+---
+# Kustomization for syncing the management cluster configuration
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./gitops/flux/clusters/management
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  timeout: 3m0s
+  wait: true

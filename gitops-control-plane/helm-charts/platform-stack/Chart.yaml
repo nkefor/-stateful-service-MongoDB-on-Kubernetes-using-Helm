@@ -1,0 +1,61 @@
+apiVersion: v2
+name: platform-stack
+description: Umbrella chart for deploying the platform stack to workload clusters
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+
+maintainers:
+  - name: Platform Team
+    email: platform@company.com
+
+dependencies:
+  # Ingress Controller
+  - name: ingress-nginx
+    version: "4.8.x"
+    repository: https://kubernetes.github.io/ingress-nginx
+    condition: ingress-nginx.enabled
+
+  # Certificate Management
+  - name: cert-manager
+    version: "1.13.x"
+    repository: https://charts.jetstack.io
+    condition: cert-manager.enabled
+
+  # External DNS
+  - name: external-dns
+    version: "1.13.x"
+    repository: https://kubernetes-sigs.github.io/external-dns/
+    condition: external-dns.enabled
+
+  # Secrets Management
+  - name: external-secrets
+    version: "0.9.x"
+    repository: https://charts.external-secrets.io
+    condition: external-secrets.enabled
+
+  # Policy Engine
+  - name: kyverno
+    version: "3.1.x"
+    repository: https://kyverno.github.io/kyverno
+    condition: kyverno.enabled
+
+  # Service Mesh (optional)
+  - name: linkerd-crds
+    version: "1.6.x"
+    repository: https://helm.linkerd.io/stable
+    condition: linkerd.enabled
+
+  - name: linkerd-control-plane
+    version: "1.16.x"
+    repository: https://helm.linkerd.io/stable
+    condition: linkerd.enabled
+
+keywords:
+  - platform
+  - kubernetes
+  - gitops
+  - infrastructure
+
+annotations:
+  category: Platform

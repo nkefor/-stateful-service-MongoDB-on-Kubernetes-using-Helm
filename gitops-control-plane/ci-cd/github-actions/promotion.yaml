@@ -1,0 +1,162 @@
+# GitHub Actions workflow for environment promotion
+name: Environment Promotion
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_env:
+        description: 'Source environment'
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+      target_env:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      app_path:
+        description: 'Application path (e.g., apps/frontend)'
+        required: true
+        type: string
+
+jobs:
+  validate-promotion:
+    name: Validate Promotion
+    runs-on: ubuntu-latest
+    outputs:
+      can_promote: ${{ steps.check.outputs.can_promote }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate promotion path
+        id: check
+        run: |
+          SOURCE="${{ github.event.inputs.source_env }}"
+          TARGET="${{ github.event.inputs.target_env }}"
+
+          # Validate promotion order
+          if [[ "$SOURCE" == "dev" && "$TARGET" == "staging" ]]; then
+            echo "can_promote=true" >> $GITHUB_OUTPUT
+          elif [[ "$SOURCE" == "staging" && "$TARGET" == "prod" ]]; then
+            echo "can_promote=true" >> $GITHUB_OUTPUT
+          else
+            echo "Invalid promotion path: $SOURCE -> $TARGET"
+            echo "can_promote=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: Check source environment health
+        run: |
+          echo "Checking health of ${{ github.event.inputs.source_env }} environment..."
+          # Add health check logic here
+
+  create-promotion-pr:
+    name: Create Promotion PR
+    needs: validate-promotion
+    if: needs.validate-promotion.outputs.can_promote == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create promotion branch
+        run: |
+          BRANCH_NAME="promote/${{ github.event.inputs.source_env }}-to-${{ github.event.inputs.target_env }}-$(date +%Y%m%d-%H%M%S)"
+          git checkout -b "$BRANCH_NAME"
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+      - name: Copy configurations
+        run: |
+          SOURCE_PATH="${{ github.event.inputs.app_path }}/overlays/${{ github.event.inputs.source_env }}"
+          TARGET_PATH="${{ github.event.inputs.app_path }}/overlays/${{ github.event.inputs.target_env }}"
+
+          echo "Promoting from $SOURCE_PATH to $TARGET_PATH"
+
+          # Copy kustomization and patches
+          # Note: This is a simplified example - real promotion would be more nuanced
+          if [ -d "$SOURCE_PATH" ]; then
+            # Update image tags or other environment-specific configs
+            echo "Updating configurations..."
+          fi
+
+      - name: Commit and push
+        run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Promote ${{ github.event.inputs.app_path }} from ${{ github.event.inputs.source_env }} to ${{ github.event.inputs.target_env }}"
+          git push origin "$BRANCH_NAME"
+
+      - name: Create Pull Request
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Promote ${context.payload.inputs.app_path} from ${context.payload.inputs.source_env} to ${context.payload.inputs.target_env}`,
+              head: process.env.BRANCH_NAME,
+              base: 'main',
+              body: `## Environment Promotion
+
+            **Source:** ${context.payload.inputs.source_env}
+            **Target:** ${context.payload.inputs.target_env}
+            **Application:** ${context.payload.inputs.app_path}
+
+            ### Checklist
+            - [ ] Source environment tests passing
+            - [ ] Reviewed configuration changes
+            - [ ] Notified stakeholders
+
+            ### Rollback
+            If issues occur, revert this PR and reconcile.
+            `
+            });
+
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['promotion', `env:${context.payload.inputs.target_env}`]
+            });
+
+            // Request review from appropriate team
+            const reviewers = context.payload.inputs.target_env === 'prod' ? ['sre-team'] : ['platform-team'];
+            await github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+              team_reviewers: reviewers
+            });
+
+            console.log(`Created PR #${pr.number}`);
+
+  notify:
+    name: Send Notification
+    needs: create-promotion-pr
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v1
+        with:
+          payload: |
+            {
+              "text": "Environment Promotion Request",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Environment Promotion Request*\n\n*Application:* ${{ github.event.inputs.app_path }}\n*From:* ${{ github.event.inputs.source_env }}\n*To:* ${{ github.event.inputs.target_env }}\n*Triggered by:* ${{ github.actor }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

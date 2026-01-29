@@ -1,0 +1,292 @@
+---
+# ArgoCD AppProject Definitions
+# Define RBAC boundaries and resource limits for different teams
+
+# Platform Project - Infrastructure and platform tools
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    description: "Platform team project for infrastructure components"
+spec:
+  description: Platform infrastructure and tools
+  sourceRepos:
+    - 'https://github.com/YOUR_ORG/platform-config'
+    - 'https://github.com/YOUR_ORG/gitops-control-plane'
+    - 'https://charts.bitnami.com/bitnami'
+    - 'https://prometheus-community.github.io/helm-charts'
+    - 'https://grafana.github.io/helm-charts'
+    - 'https://charts.jetstack.io'
+    - 'https://kubernetes.github.io/ingress-nginx'
+
+  destinations:
+    - namespace: '*'
+      server: '*'
+
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: platform-admin
+      description: Platform team admin access
+      policies:
+        - p, proj:platform:platform-admin, applications, *, platform/*, allow
+        - p, proj:platform:platform-admin, clusters, get, *, allow
+        - p, proj:platform:platform-admin, repositories, get, *, allow
+        - p, proj:platform:platform-admin, logs, get, platform/*, allow
+        - p, proj:platform:platform-admin, exec, create, platform/*, allow
+      groups:
+        - platform-team
+
+    - name: platform-viewer
+      description: Read-only access to platform project
+      policies:
+        - p, proj:platform:platform-viewer, applications, get, platform/*, allow
+        - p, proj:platform:platform-viewer, logs, get, platform/*, allow
+      groups:
+        - developers
+
+---
+# Security Project - Security tools and policies
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: security
+  namespace: argocd
+  annotations:
+    description: "Security team project for policies and security tools"
+spec:
+  description: Security policies and tools
+  sourceRepos:
+    - 'https://github.com/YOUR_ORG/policies'
+    - 'https://kyverno.github.io/kyverno'
+    - 'https://charts.external-secrets.io'
+    - 'https://helm.releases.hashicorp.com'
+
+  destinations:
+    - namespace: kyverno
+      server: '*'
+    - namespace: external-secrets
+      server: '*'
+    - namespace: vault
+      server: '*'
+    - namespace: security-tools
+      server: '*'
+
+  clusterResourceWhitelist:
+    - group: 'kyverno.io'
+      kind: '*'
+    - group: 'policy.kyverno.io'
+      kind: '*'
+    - group: ''
+      kind: Namespace
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  roles:
+    - name: security-admin
+      description: Security team admin access
+      policies:
+        - p, proj:security:security-admin, applications, *, security/*, allow
+        - p, proj:security:security-admin, clusters, get, *, allow
+        - p, proj:security:security-admin, logs, get, security/*, allow
+      groups:
+        - security-team
+
+---
+# Applications Project - Application workloads
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: applications
+  namespace: argocd
+  annotations:
+    description: "Application teams project for workloads"
+spec:
+  description: Application workloads
+  sourceRepos:
+    - 'https://github.com/YOUR_ORG/applications'
+    - 'https://github.com/YOUR_ORG/*-service'
+
+  destinations:
+    # Only specific namespaces allowed
+    - namespace: 'frontend'
+      server: '*'
+    - namespace: 'backend'
+      server: '*'
+    - namespace: 'api-gateway'
+      server: '*'
+    - namespace: 'payments'
+      server: '*'
+    - namespace: 'orders'
+      server: '*'
+
+  # Deny cluster-scoped resources
+  clusterResourceWhitelist: []
+
+  # Allow only specific namespace resources
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Secret
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: ''
+      kind: PersistentVolumeClaim
+    - group: 'apps'
+      kind: Deployment
+    - group: 'apps'
+      kind: StatefulSet
+    - group: 'apps'
+      kind: DaemonSet
+    - group: 'batch'
+      kind: Job
+    - group: 'batch'
+      kind: CronJob
+    - group: 'networking.k8s.io'
+      kind: Ingress
+    - group: 'networking.k8s.io'
+      kind: NetworkPolicy
+    - group: 'autoscaling'
+      kind: HorizontalPodAutoscaler
+    - group: 'policy'
+      kind: PodDisruptionBudget
+
+  # Deny specific resources even if type-matched above
+  namespaceResourceBlacklist:
+    - group: ''
+      kind: ResourceQuota
+    - group: ''
+      kind: LimitRange
+
+  roles:
+    - name: app-admin
+      description: Application team admin
+      policies:
+        - p, proj:applications:app-admin, applications, *, applications/*, allow
+        - p, proj:applications:app-admin, logs, get, applications/*, allow
+        - p, proj:applications:app-admin, exec, create, applications/*, deny
+      groups:
+        - app-developers
+
+    - name: app-deployer
+      description: CI/CD service account
+      policies:
+        - p, proj:applications:app-deployer, applications, sync, applications/*, allow
+        - p, proj:applications:app-deployer, applications, get, applications/*, allow
+      groups:
+        - ci-cd-bot
+
+---
+# Production Project - Production workloads with stricter controls
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: production
+  namespace: argocd
+  annotations:
+    description: "Production workloads with strict controls"
+spec:
+  description: Production application workloads
+  sourceRepos:
+    - 'https://github.com/YOUR_ORG/applications'
+
+  destinations:
+    # Only production clusters
+    - namespace: '*'
+      server: 'https://prod-us-east-1.company.com'
+    - namespace: '*'
+      server: 'https://prod-eu-west-1.company.com'
+
+  clusterResourceWhitelist: []
+
+  namespaceResourceWhitelist:
+    - group: ''
+      kind: ConfigMap
+    - group: ''
+      kind: Service
+    - group: ''
+      kind: ServiceAccount
+    - group: 'apps'
+      kind: Deployment
+    - group: 'apps'
+      kind: StatefulSet
+    - group: 'networking.k8s.io'
+      kind: Ingress
+    - group: 'autoscaling'
+      kind: HorizontalPodAutoscaler
+    - group: 'policy'
+      kind: PodDisruptionBudget
+
+  # Require signed commits for production
+  signatureKeys:
+    - keyID: "YOUR_GPG_KEY_ID"
+
+  roles:
+    - name: prod-admin
+      description: Production admin (SRE only)
+      policies:
+        - p, proj:production:prod-admin, applications, *, production/*, allow
+        - p, proj:production:prod-admin, logs, get, production/*, allow
+      groups:
+        - sre-team
+
+    - name: prod-viewer
+      description: Read-only production access
+      policies:
+        - p, proj:production:prod-viewer, applications, get, production/*, allow
+        - p, proj:production:prod-viewer, logs, get, production/*, allow
+      groups:
+        - developers
+        - platform-team
+
+---
+# PR Environments Project - Ephemeral environments
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: pr-environments
+  namespace: argocd
+  annotations:
+    description: "Ephemeral PR environments"
+spec:
+  description: Pull request preview environments
+  sourceRepos:
+    - 'https://github.com/YOUR_ORG/applications'
+
+  destinations:
+    # Only dev cluster for PR environments
+    - namespace: 'pr-*'
+      server: 'https://dev-us-east-1.company.com'
+
+  clusterResourceWhitelist: []
+
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+
+  # Auto-delete applications after 7 days
+  orphanedResources:
+    warn: true
+    ignore: []
+
+  roles:
+    - name: pr-admin
+      description: PR environment admin
+      policies:
+        - p, proj:pr-environments:pr-admin, applications, *, pr-environments/*, allow
+      groups:
+        - developers
+        - ci-cd-bot

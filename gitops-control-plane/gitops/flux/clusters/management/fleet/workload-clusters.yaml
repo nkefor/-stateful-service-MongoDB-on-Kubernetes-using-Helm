@@ -1,0 +1,157 @@
+---
+# Fleet Configuration for Workload Clusters
+# This file defines how workload clusters are managed from the management cluster
+
+# Namespace for fleet management
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fleet-clusters
+  labels:
+    app.kubernetes.io/name: fleet-clusters
+    app.kubernetes.io/component: fleet-management
+
+---
+# Secret template for cluster kubeconfigs
+# Crossplane populates these secrets when clusters are created
+apiVersion: v1
+kind: Secret
+metadata:
+  name: cluster-credentials-template
+  namespace: fleet-clusters
+  annotations:
+    description: "Template for cluster credentials - not a real secret"
+type: Opaque
+stringData:
+  README: |
+    Cluster credentials are created automatically by Crossplane
+    when a KubernetesCluster claim is reconciled.
+
+    Secret names follow the pattern: <cluster-name>-connection
+
+    Each secret contains:
+    - kubeconfig: Full kubeconfig for cluster access
+    - cluster-ca: CA certificate
+    - cluster-endpoint: API server endpoint
+    - cluster-token: Service account token
+
+---
+# GitOps Toolkit for Development Cluster
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: dev-us-east-1-bootstrap
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/flux/clusters/workload/dev
+  prune: true
+  kubeConfig:
+    secretRef:
+      name: dev-us-east-1-connection
+      key: kubeconfig
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
+  patches:
+    - patch: |
+        - op: add
+          path: /metadata/labels/cluster
+          value: dev-us-east-1
+      target:
+        kind: Kustomization
+
+---
+# GitOps Toolkit for Staging Cluster
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: staging-us-east-1-bootstrap
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/flux/clusters/workload/staging
+  prune: true
+  kubeConfig:
+    secretRef:
+      name: staging-us-east-1-connection
+      key: kubeconfig
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
+
+---
+# GitOps Toolkit for Production US Cluster
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: prod-us-east-1-bootstrap
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/flux/clusters/workload/prod
+  prune: true
+  kubeConfig:
+    secretRef:
+      name: prod-us-east-1-connection
+      key: kubeconfig
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
+
+---
+# GitOps Toolkit for Production EU Cluster
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: prod-eu-west-1-bootstrap
+  namespace: flux-system
+spec:
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./gitops/flux/clusters/workload/prod
+  prune: true
+  kubeConfig:
+    secretRef:
+      name: prod-eu-west-1-connection
+      key: kubeconfig
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: source-controller
+      namespace: flux-system
+  patches:
+    - patch: |
+        - op: add
+          path: /metadata/labels/region
+          value: eu-west-1
+        - op: add
+          path: /metadata/labels/data-residency
+          value: eu
+      target:
+        kind: Kustomization

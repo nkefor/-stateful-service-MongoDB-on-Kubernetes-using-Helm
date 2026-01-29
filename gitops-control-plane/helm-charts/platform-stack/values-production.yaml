@@ -1,0 +1,112 @@
+# Production Environment Overrides
+# These values are applied to production clusters
+
+global:
+  environment: production
+
+# Ingress NGINX - Production settings
+ingress-nginx:
+  controller:
+    replicaCount: 3
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1
+        memory: 1Gi
+    autoscaling:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 20
+    podDisruptionBudget:
+      enabled: true
+      minAvailable: 2
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: DoNotSchedule
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: ingress-nginx
+
+# Cert Manager - Production settings
+cert-manager:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  podDisruptionBudget:
+    minAvailable: 2
+
+# External Secrets - Production settings
+external-secrets:
+  replicaCount: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  webhook:
+    replicaCount: 3
+  certController:
+    replicaCount: 3
+
+# Kyverno - Production settings
+kyverno:
+  replicaCount: 5
+  resources:
+    limits:
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 512Mi
+  admissionController:
+    replicas: 5
+    podDisruptionBudget:
+      minAvailable: 3
+  backgroundController:
+    replicas: 3
+  cleanupController:
+    replicas: 3
+  reportsController:
+    replicas: 3
+
+# Metrics Server - Production settings
+metrics-server:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# Resource Quotas - Production (larger limits)
+resourceQuotas:
+  enabled: true
+  default:
+    requests:
+      cpu: "16"
+      memory: "32Gi"
+    limits:
+      cpu: "32"
+      memory: "64Gi"
+
+# Limit Ranges - Production
+limitRanges:
+  enabled: true
+  default:
+    defaultRequest:
+      cpu: "200m"
+      memory: "256Mi"
+    defaultLimit:
+      cpu: "1"
+      memory: "1Gi"

@@ -1,0 +1,129 @@
+---
+# Crossplane Installation for Management Cluster
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: crossplane
+  namespace: flux-system
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: crossplane
+      version: "1.14.x"
+      sourceRef:
+        kind: HelmRepository
+        name: crossplane
+        namespace: flux-system
+  targetNamespace: crossplane-system
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  upgrade:
+    remediation:
+      retries: 3
+  values:
+    replicas: 2
+    resourcesCrossplane:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 1Gi
+    resourcesRBACManager:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 512Mi
+    metrics:
+      enabled: true
+    args:
+      - --enable-composition-functions
+      - --enable-composition-webhook-schema-validation
+
+---
+# Crossplane Providers Kustomization
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-providers
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: crossplane
+  interval: 10m
+  retryInterval: 2m
+  timeout: 10m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./management-cluster/crossplane/providers
+  prune: true
+  wait: true
+  healthChecks:
+    - apiVersion: pkg.crossplane.io/v1
+      kind: Provider
+      name: provider-aws
+
+---
+# Crossplane XRDs and Compositions
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-xrds
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: crossplane-providers
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./management-cluster/crossplane/xrds
+  prune: true
+  wait: true
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: crossplane-compositions
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: crossplane-xrds
+  interval: 10m
+  retryInterval: 2m
+  timeout: 5m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./management-cluster/crossplane/compositions
+  prune: true
+  wait: true
+
+---
+# Cluster Claims (Infrastructure definitions)
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cluster-claims
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: crossplane-compositions
+  interval: 5m
+  retryInterval: 1m
+  timeout: 30m  # Cluster provisioning takes time
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./management-cluster/crossplane/claims
+  prune: false  # Don't delete clusters accidentally
+  wait: false   # Don't wait for clusters to be ready (takes too long)

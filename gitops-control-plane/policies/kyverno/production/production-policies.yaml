@@ -1,0 +1,236 @@
+---
+# Production-Specific Policies
+# Stricter policies for production environments
+
+# Require Pod Disruption Budget
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pdb
+  annotations:
+    policies.kyverno.io/title: Require PodDisruptionBudget
+    policies.kyverno.io/category: High Availability
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/subject: Deployment
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-pdb-exists
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      preconditions:
+        all:
+          - key: "{{request.object.spec.replicas}}"
+            operator: GreaterThan
+            value: 1
+      validate:
+        message: "Production deployments with replicas > 1 must have a PodDisruptionBudget."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.name }}"
+                operator: AnyNotIn
+                value: "{{ poddisruptionbudgets.list(request.object.metadata.namespace, '').items[].spec.selector.matchLabels.app }}"
+
+---
+# Require Minimum Replicas
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-minimum-replicas
+  annotations:
+    policies.kyverno.io/title: Require Minimum Replicas in Production
+    policies.kyverno.io/category: High Availability
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: minimum-replicas
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      validate:
+        message: "Production deployments must have at least 2 replicas."
+        pattern:
+          spec:
+            replicas: ">=2"
+
+---
+# Require Anti-Affinity for Production
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-antiaffinity
+  annotations:
+    policies.kyverno.io/title: Require Pod Anti-Affinity
+    policies.kyverno.io/category: High Availability
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-pod-antiaffinity
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      preconditions:
+        all:
+          - key: "{{request.object.spec.replicas}}"
+            operator: GreaterThan
+            value: 1
+      validate:
+        message: "Production deployments should have pod anti-affinity rules."
+        pattern:
+          spec:
+            template:
+              spec:
+                affinity:
+                  podAntiAffinity:
+                    "preferredDuringSchedulingIgnoredDuringExecution | requiredDuringSchedulingIgnoredDuringExecution": "*"
+
+---
+# Require Topology Spread Constraints
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-topology-spread
+  annotations:
+    policies.kyverno.io/title: Require Topology Spread Constraints
+    policies.kyverno.io/category: High Availability
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: require-zone-spread
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+                  ha-required: "true"
+      validate:
+        message: "High-availability deployments should spread across availability zones."
+        pattern:
+          spec:
+            template:
+              spec:
+                topologySpreadConstraints:
+                  - topologyKey: "topology.kubernetes.io/zone"
+                    maxSkew: ">=1"
+
+---
+# Require HPA for Production
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-hpa
+  annotations:
+    policies.kyverno.io/title: Require HorizontalPodAutoscaler
+    policies.kyverno.io/category: Scalability
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-hpa-exists
+      match:
+        any:
+          - resources:
+              kinds:
+                - Deployment
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+                  autoscaling: "true"
+      validate:
+        message: "Production deployments should have a HorizontalPodAutoscaler."
+        deny:
+          conditions:
+            any:
+              - key: "{{ request.object.metadata.name }}"
+                operator: AnyNotIn
+                value: "{{ horizontalpodautoscalers.list(request.object.metadata.namespace, '').items[].spec.scaleTargetRef.name }}"
+
+---
+# Disallow EmptyDir for Production StatefulSets
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-emptydir-statefulset
+  annotations:
+    policies.kyverno.io/title: Disallow EmptyDir for StatefulSets
+    policies.kyverno.io/category: Data Persistence
+    policies.kyverno.io/severity: high
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: no-emptydir
+      match:
+        any:
+          - resources:
+              kinds:
+                - StatefulSet
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      validate:
+        message: "Production StatefulSets should not use emptyDir volumes for data."
+        pattern:
+          spec:
+            template:
+              spec:
+                volumes:
+                  - X(emptyDir): "null"
+
+---
+# Require Image Pull Policy Always
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-imagepullpolicy-always
+  annotations:
+    policies.kyverno.io/title: Require ImagePullPolicy Always
+    policies.kyverno.io/category: Supply Chain Security
+    policies.kyverno.io/severity: medium
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: imagepullpolicy-always
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaceSelector:
+                matchLabels:
+                  environment: production
+      validate:
+        message: "Production containers must have imagePullPolicy set to Always."
+        pattern:
+          spec:
+            containers:
+              - imagePullPolicy: Always
